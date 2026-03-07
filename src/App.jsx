@@ -170,9 +170,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("ascend-username", username);
   }, [username]);
-  useEffect(() => {
-    localStorage.setItem("ascend-xplog", JSON.stringify(xpLog.slice(-50)));
-  }, [xpLog]);
 
   const playCompleteSound = () => {
     const audio = new Audio(completeSound);
@@ -222,6 +219,9 @@ export default function App() {
     const saved = localStorage.getItem("ascend-xplog");
     return saved ? JSON.parse(saved) : [];
   });
+  useEffect(() => {
+    localStorage.setItem("ascend-xplog", JSON.stringify(xpLog.slice(-50)));
+  }, [xpLog]);
   const [pendingNoteHabit, setPendingNoteHabit] = useState(null);
   const [noteText, setNoteText] = useState("");
 
@@ -1396,20 +1396,44 @@ function EditHabitModal({ habit, setHabit, onClose, onSave, onDelete }) {
           style={{ width: "100%", background: "#ffffff08", border: "1px solid #ffffff20", borderRadius: 12, padding: "14px 16px", color: "#fff", fontSize: 16, fontFamily: "'Rajdhani', sans-serif", marginBottom: 12, outline: "none" }}
         />
 
-        {/* Category + Difficulty */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-          <div>
-            <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 6 }}>CATEGORY</div>
-            <select value={habit.category} onChange={e => setHabit(p => ({ ...p, category: e.target.value }))} style={{ width: "100%", background: "#0f0f1a", border: "1px solid #ffffff20", borderRadius: 10, padding: "10px 12px", color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 14 }}>
-              {["Mind", "Body", "Wealth", "Discipline", "Social"].map(c => <option key={c}>{c}</option>)}
-            </select>
+        {/* CATEGORY row */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 6 }}>CATEGORY</div>
+          <select value={habit.category} onChange={e => setHabit(p => ({ ...p, category: e.target.value }))} style={{ width: "100%", background: "#0f0f1a", border: "1px solid #ffffff20", borderRadius: 10, padding: "10px 12px", color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 14 }}>
+            {["Mind", "Body", "Wealth", "Discipline", "Social"].map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+
+        {/* TIME SLOT row — between Category and Difficulty */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 8 }}>TIME SLOT</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[
+              { key: "morning",   label: "🌅 Morning",   time: "07:00 AM", color: "#F59E0B" },
+              { key: "afternoon", label: "☀️ Afternoon", time: "01:00 PM", color: "#06B6D4" },
+              { key: "evening",   label: "🌙 Evening",   time: "08:00 PM", color: "#8B5CF6" },
+            ].map(s => {
+              const t = habit.time || "";
+              const hour = parseInt(t.split(":")[0]) || 0;
+              const isPM = t.includes("PM");
+              const h24 = isPM && hour !== 12 ? hour + 12 : (!isPM && hour === 12 ? 0 : hour);
+              const selected = h24 < 12 ? s.key === "morning" : h24 < 17 ? s.key === "afternoon" : s.key === "evening";
+              return (
+                <button key={s.key} onClick={() => setHabit(p => ({ ...p, time: s.time }))}
+                  style={{ flex: 1, padding: "11px 4px", borderRadius: 12, border: `2px solid ${selected ? s.color : "#ffffff12"}`, background: selected ? `${s.color}18` : "#ffffff06", color: selected ? s.color : "#ffffff45", fontSize: 11, fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}>
+                  {s.label}
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 6 }}>DIFFICULTY</div>
-            <select value={habit.difficulty} onChange={e => setHabit(p => ({ ...p, difficulty: e.target.value }))} style={{ width: "100%", background: "#0f0f1a", border: "1px solid #ffffff20", borderRadius: 10, padding: "10px 12px", color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 14 }}>
-              {["Easy", "Medium", "Hard"].map(d => <option key={d}>{d}</option>)}
-            </select>
-          </div>
+        </div>
+
+        {/* DIFFICULTY row */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 6 }}>DIFFICULTY</div>
+          <select value={habit.difficulty} onChange={e => setHabit(p => ({ ...p, difficulty: e.target.value }))} style={{ width: "100%", background: "#0f0f1a", border: "1px solid #ffffff20", borderRadius: 10, padding: "10px 12px", color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 14 }}>
+            {["Easy", "Medium", "Hard"].map(d => <option key={d}>{d}</option>)}
+          </select>
         </div>
 
         {/* Save + Cancel */}
@@ -2474,46 +2498,42 @@ function AddHabitModal({ newHabit, setNewHabit, onClose, onSave }) {
           ))}
         </div>
         <input placeholder="Habit name..." value={newHabit.name} onChange={e => setNewHabit(p => ({ ...p, name: e.target.value }))} style={{ width: "100%", background: "#ffffff08", border: "1px solid #ffffff20", borderRadius: 12, padding: "14px 16px", color: "#fff", fontSize: 16, fontFamily: "'Rajdhani', sans-serif", marginBottom: 12, outline: "none" }} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-          <div>
-            <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 6 }}>CATEGORY</div>
-            <select value={newHabit.category} onChange={e => setNewHabit(p => ({ ...p, category: e.target.value }))} style={{ width: "100%", background: "#0f0f1a", border: "1px solid #ffffff20", borderRadius: 10, padding: "10px 12px", color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 14 }}>
-              {["Mind", "Body", "Wealth", "Discipline", "Social"].map(c => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 6 }}>DIFFICULTY</div>
-            <select value={newHabit.difficulty} onChange={e => setNewHabit(p => ({ ...p, difficulty: e.target.value }))} style={{ width: "100%", background: "#0f0f1a", border: "1px solid #ffffff20", borderRadius: 10, padding: "10px 12px", color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 14 }}>
-              {["Easy", "Medium", "Hard"].map(d => <option key={d}>{d}</option>)}
-            </select>
-          </div>
+        {/* CATEGORY */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 6 }}>CATEGORY</div>
+          <select value={newHabit.category} onChange={e => setNewHabit(p => ({ ...p, category: e.target.value }))} style={{ width: "100%", background: "#0f0f1a", border: "1px solid #ffffff20", borderRadius: 10, padding: "10px 12px", color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 14 }}>
+            {["Mind", "Body", "Wealth", "Discipline", "Social"].map(c => <option key={c}>{c}</option>)}
+          </select>
         </div>
-        {/* Time slot */}
-        <div style={{ marginBottom: 20 }}>
+        {/* TIME SLOT — between Category and Difficulty */}
+        <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 8 }}>TIME SLOT</div>
           <div style={{ display: "flex", gap: 8 }}>
             {[
-              { key: "morning",   label: "🌅 Morning",   time: "07:00 AM" },
-              { key: "afternoon", label: "☀️ Afternoon", time: "01:00 PM" },
-              { key: "evening",   label: "🌙 Evening",   time: "08:00 PM" },
+              { key: "morning",   label: "🌅 Morning",   time: "07:00 AM", color: "#F59E0B" },
+              { key: "afternoon", label: "☀️ Afternoon", time: "01:00 PM", color: "#06B6D4" },
+              { key: "evening",   label: "🌙 Evening",   time: "08:00 PM", color: "#8B5CF6" },
             ].map(s => {
-              const selected = (() => {
-                const t = newHabit.time || "";
-                const hour = parseInt(t.split(":")[0]) || 0;
-                const isPM = t.includes("PM");
-                const h24 = isPM && hour !== 12 ? hour + 12 : (!isPM && hour === 12 ? 0 : hour);
-                if (h24 < 12) return s.key === "morning";
-                if (h24 < 17) return s.key === "afternoon";
-                return s.key === "evening";
-              })();
+              const t = newHabit.time || "";
+              const hour = parseInt(t.split(":")[0]) || 0;
+              const isPM = t.includes("PM");
+              const h24 = isPM && hour !== 12 ? hour + 12 : (!isPM && hour === 12 ? 0 : hour);
+              const selected = h24 < 12 ? s.key === "morning" : h24 < 17 ? s.key === "afternoon" : s.key === "evening";
               return (
                 <button key={s.key} onClick={() => setNewHabit(p => ({ ...p, time: s.time }))}
-                  style={{ flex: 1, padding: "10px 4px", borderRadius: 12, border: `2px solid ${selected ? "#8B5CF6" : "#ffffff12"}`, background: selected ? "#8B5CF620" : "#ffffff06", color: selected ? "#8B5CF6" : "#ffffff50", fontSize: 11, fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}>
+                  style={{ flex: 1, padding: "11px 4px", borderRadius: 12, border: `2px solid ${selected ? s.color : "#ffffff12"}`, background: selected ? `${s.color}18` : "#ffffff06", color: selected ? s.color : "#ffffff45", fontSize: 11, fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}>
                   {s.label}
                 </button>
               );
             })}
           </div>
+        </div>
+        {/* DIFFICULTY */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: "#ffffff40", marginBottom: 6 }}>DIFFICULTY</div>
+          <select value={newHabit.difficulty} onChange={e => setNewHabit(p => ({ ...p, difficulty: e.target.value }))} style={{ width: "100%", background: "#0f0f1a", border: "1px solid #ffffff20", borderRadius: 10, padding: "10px 12px", color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 14 }}>
+            {["Easy", "Medium", "Hard"].map(d => <option key={d}>{d}</option>)}
+          </select>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, padding: 16, borderRadius: 14, border: "1px solid #ffffff20", background: "transparent", color: "#ffffff60", fontFamily: "'Rajdhani', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>CANCEL</button>
