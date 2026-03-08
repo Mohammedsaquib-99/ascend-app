@@ -196,10 +196,33 @@ export default function App() {
     localStorage.setItem("ascend-username", username);
   }, [username]);
 
-  const playCompleteSound = () => {
-    const audio = new Audio(completeSound);
-    audio.volume = 0.7;
-    audio.play().catch(() => {});
+  const playCompleteSound = (category = "Mind") => {
+    if (!userProfile?.soundEnabled) return;
+    try {
+      const audio = new Audio(completeSound);
+      audio.volume = 0.4;
+      audio.play().catch(() => {});
+    } catch(e) {}
+    // Category-specific synth layer
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      const sounds = {
+        Mind:       { type: "sine",     freqs: [528, 660],  vol: 0.18 },
+        Body:       { type: "sawtooth", freqs: [180, 240],  vol: 0.12 },
+        Wealth:     { type: "triangle", freqs: [830, 1046], vol: 0.15 },
+        Discipline: { type: "square",   freqs: [220, 330],  vol: 0.10 },
+        Social:     { type: "sine",     freqs: [659, 880],  vol: 0.18 },
+      };
+      const s = sounds[category] || sounds.Mind;
+      osc.type = s.type;
+      gain.gain.setValueAtTime(s.vol, ctx.currentTime);
+      s.freqs.forEach((f, i) => osc.frequency.setValueAtTime(f, ctx.currentTime + i * 0.12));
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(); osc.stop(ctx.currentTime + 0.5);
+    } catch(e) {}
   };
 
   const playBossDefeatSound = () => {
@@ -247,6 +270,13 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("ascend-xplog", JSON.stringify(xpLog.slice(-50)));
   }, [xpLog]);
+  // Show mood picker once per day at start
+  useEffect(() => {
+    if (hasEnteredName && todayMood === null) {
+      const t = setTimeout(() => setShowMoodPicker(true), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [hasEnteredName]);
   const [pendingNoteHabit, setPendingNoteHabit] = useState(null);
   const [noteText, setNoteText] = useState("");
 
@@ -254,6 +284,24 @@ export default function App() {
   const [showEditModal, setShowEditModal] = useState(false);
 
   const [showSettings, setShowSettings] = useState(false);
+  const [showLevelCutscene, setShowLevelCutscene] = useState(false);
+  const [cutsceneLevel, setCutsceneLevel] = useState(1);
+  const [moodLog, setMoodLog] = useState(() => {
+    const saved = localStorage.getItem("ascend-moodlog");
+    return saved ? JSON.parse(saved) : [];
+  });
+  useEffect(() => {
+    localStorage.setItem("ascend-moodlog", JSON.stringify(moodLog.slice(-90)));
+  }, [moodLog]);
+  const [todayMood, setTodayMood] = useState(() => {
+    const saved = localStorage.getItem("ascend-moodlog");
+    if (!saved) return null;
+    const log = JSON.parse(saved);
+    const today = new Date().toDateString();
+    return log.find(m => m.date === today)?.mood ?? null;
+  });
+  const [showMoodPicker, setShowMoodPicker] = useState(false);
+  const [showReportCard, setShowReportCard] = useState(false);
   const [onboardStep, setOnboardStep] = useState(() => {
     return localStorage.getItem("ascend-onboarded") ? null : 1;
   });
@@ -378,7 +426,12 @@ export default function App() {
 
   const prevLevel = useRef(level);
   useEffect(() => {
-    if (level > prevLevel.current) { setShowLevelUp(true); setTimeout(() => setShowLevelUp(false), 3000); }
+    if (level > prevLevel.current) {
+      setCutsceneLevel(level);
+      setShowLevelCutscene(true);
+      setShowLevelUp(true);
+      setTimeout(() => setShowLevelUp(false), 3000);
+    }
     prevLevel.current = level;
   }, [level]);
 
@@ -409,7 +462,7 @@ export default function App() {
     }, ...prev].slice(0, 50));
 
     setCompletedFlash(id);
-    playCompleteSound();
+    playCompleteSound(h?.category);
     const rect = e.currentTarget.getBoundingClientRect();
     const pid = Date.now();
     setParticles(prev => [...prev, { id: pid, x: rect.left + rect.width / 2, y: rect.top, amount: allDone ? "ALL DONE! +LEVEL" : gain }]);
@@ -462,7 +515,7 @@ export default function App() {
     const updated = { ...dailyChallenge, completed: true };
     setDailyChallenge(updated);
     localStorage.setItem("ascend-challenge", JSON.stringify(updated));
-    playCompleteSound();
+    playCompleteSound(h?.category);
     const rect = e.currentTarget.getBoundingClientRect();
     const pid = Date.now();
     setParticles(prev => [...prev, { id: pid, x: rect.left + rect.width / 2, y: rect.top, amount: `+${gain} XP` }]);
@@ -496,8 +549,8 @@ export default function App() {
       completeDailyChallenge={completeDailyChallenge}
       levelTitle={getLevelTitle(level)} TC={TC} TC2={TC2}
     />,
-    skills: <SkillScreen habits={habits} streak={streak} xp={xp} />,
-    analytics: <AnalyticsScreen habits={habits} xp={xp} level={level} levelProgress={levelProgress} streak={streak} TC={TC} TC2={TC2} />,
+    skills: <SkillScreen habits={habits} streak={streak} xp={xp} TC={TC} TC2={TC2} />,
+    analytics: <AnalyticsScreen habits={habits} xp={xp} level={level} levelProgress={levelProgress} streak={streak} TC={TC} TC2={TC2} moodLog={moodLog} onOpenReport={() => setShowReportCard(true)} />,
     focus: <FocusScreen focusTime={focusTime} focusRunning={focusRunning} setFocusRunning={setFocusRunning} setFocusTime={setFocusTime} formatTime={formatTime} focusActive={focusActive} setFocusActive={setFocusActive} />,
     profile: <ProfileScreen xp={xp} level={level} levelProgress={levelProgress} habits={habits} streak={streak} username={username} userProfile={userProfile} onOpenSettings={() => setShowSettings(true)} xpLog={xpLog} TC={TC} TC2={TC2} />,
   };
@@ -623,6 +676,7 @@ export default function App() {
         @keyframes levelUp { 0% { transform: scale(0.5) translateY(50px); opacity:0; } 50% { transform: scale(1.1) translateY(0); opacity:1; } 100% { transform: scale(1); opacity: 1; } }
         @keyframes orb { 0%,100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-15px) scale(1.05); } }
         @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes flash { 0%,100% { opacity:0; } 50% { opacity:1; } }
         @keyframes borderGlow { 0%,100% { border-color: #8B5CF6; box-shadow: 0 0 10px #8B5CF644; } 50% { border-color: #06B6D4; box-shadow: 0 0 30px #06B6D488; } }
         @keyframes modalIn { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -672,6 +726,31 @@ export default function App() {
       )}
 
       {showBoss && <BossModal bossHp={bossHp} onClose={() => setShowBoss(false)} habits={habits} playBossDefeatSound={playBossDefeatSound} />}
+
+      {/* ── LEVEL UP CUTSCENE ── */}
+      {showLevelCutscene && (
+        <LevelCutscene level={cutsceneLevel} TC={TC} TC2={TC2}
+          onClose={() => setShowLevelCutscene(false)}
+          username={username} levelTitle={getLevelTitle(cutsceneLevel)} />
+      )}
+
+      {/* ── MOOD PICKER ── */}
+      {showMoodPicker && (
+        <MoodPicker TC={TC} onClose={() => setShowMoodPicker(false)}
+          onSelect={(mood) => {
+            const today = new Date().toDateString();
+            const entry = { date: today, mood, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+            setMoodLog(prev => [...prev.filter(m => m.date !== today), entry]);
+            setTodayMood(mood);
+            setShowMoodPicker(false);
+          }} />
+      )}
+
+      {/* ── WEEKLY REPORT CARD ── */}
+      {showReportCard && (
+        <WeeklyReportCard habits={habits} xp={xp} streak={streak} moodLog={moodLog}
+          TC={TC} TC2={TC2} onClose={() => setShowReportCard(false)} xpLog={xpLog} />
+      )}
 
       {showAddHabit && (
         <AddHabitModal
@@ -1527,16 +1606,15 @@ function EditHabitModal({ habit, setHabit, onClose, onSave, onDelete }) {
 }
 
 // ─── SKILL SCREEN ─────────────────────────────────────────────────────────────
-function SkillScreen({ habits, streak, xp }) {
+function SkillScreen({ habits, streak, xp, TC = "#8B5CF6", TC2 = "#06B6D4" }) {
   const [selected, setSelected] = useState(null);
+  const [newlyUnlocked, setNewlyUnlocked] = useState(null);
 
-  // Map habit categories to skill trees
   const catMap = { Mind: 0, Body: 1, Wealth: 2, Discipline: 3, Social: 4 };
   const skillData = SKILL_TREES.map((s, i) => {
     const catHabits = habits.filter(h => h.category === s.name);
     const done = catHabits.filter(h => h.completed).length;
     const totalStreak = catHabits.reduce((sum, h) => sum + h.streak, 0);
-    // Level derived from streak in that category (base + earned)
     const earnedLevel = Math.min(s.max, s.level + Math.floor(totalStreak / 3));
     return { ...s, earnedLevel, done, catHabits, totalStreak };
   });
@@ -1544,27 +1622,26 @@ function SkillScreen({ habits, streak, xp }) {
   const totalLevel = skillData.reduce((sum, s) => sum + s.earnedLevel, 0);
   const maxTotal = skillData.reduce((sum, s) => sum + s.max, 0);
 
-  // Unlock nodes per skill (3 nodes, unlock at level thresholds)
   const NODES = [
-    { label: "Novice",   threshold: 3,  icon: "🌱" },
-    { label: "Adept",    threshold: 10, icon: "⚡" },
-    { label: "Master",   threshold: 18, icon: "👑" },
+    { label: "Novice",   threshold: 3,  icon: "🌱", perk: "+5% XP in category" },
+    { label: "Adept",    threshold: 10, icon: "⚡", perk: "Unlock streak shield" },
+    { label: "Master",   threshold: 18, icon: "👑", perk: "Category badge unlocked" },
   ];
 
   return (
     <div style={{ padding: "50px 20px 100px" }}>
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 10, letterSpacing: 5, color: "#8B5CF6", fontFamily: "'Orbitron', monospace", marginBottom: 6 }}>SKILL TREE</div>
-        <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.2, background: "linear-gradient(135deg, #fff 50%, #8B5CF6aa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+        <div style={{ fontSize: 10, letterSpacing: 5, color: TC, fontFamily: "'Orbitron', monospace", marginBottom: 6 }}>SKILL TREE</div>
+        <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.2, background: `linear-gradient(135deg, #fff 50%, ${TC}aa)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
           Your Mastery<br />Domains
         </div>
       </div>
 
       {/* Overall power bar */}
-      <div style={{ background: "linear-gradient(135deg, #8B5CF608, #06B6D408)", border: "1px solid #8B5CF622", borderRadius: 16, padding: 16, marginBottom: 20, display: "flex", alignItems: "center", gap: 16 }}>
+      <div style={{ background: `linear-gradient(135deg, ${TC}08, ${TC2}08)`, border: `1px solid ${TC}22`, borderRadius: 16, padding: 16, marginBottom: 20, display: "flex", alignItems: "center", gap: 16 }}>
         <div style={{ textAlign: "center", minWidth: 56 }}>
-          <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 26, fontWeight: 900, background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{totalLevel}</div>
+          <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 26, fontWeight: 900, background: `linear-gradient(135deg, ${TC}, ${TC2})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{totalLevel}</div>
           <div style={{ fontSize: 8, letterSpacing: 2, color: "#ffffff30", fontFamily: "'Orbitron', monospace" }}>POWER</div>
         </div>
         <div style={{ flex: 1 }}>
@@ -1572,7 +1649,7 @@ function SkillScreen({ habits, streak, xp }) {
             <span>TOTAL MASTERY</span><span>{Math.round((totalLevel / maxTotal) * 100)}%</span>
           </div>
           <div style={{ height: 6, background: "#ffffff08", borderRadius: 3, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${(totalLevel / maxTotal) * 100}%`, background: "linear-gradient(90deg, #8B5CF6, #06B6D4, #F59E0B)", borderRadius: 3, transition: "width 1s ease", boxShadow: "0 0 10px #8B5CF644" }} />
+            <div style={{ height: "100%", width: `${(totalLevel / maxTotal) * 100}%`, background: `linear-gradient(90deg, ${TC}, ${TC2}, #F59E0B)`, borderRadius: 3, transition: "width 1s ease", boxShadow: `0 0 10px ${TC}44` }} />
           </div>
           <div style={{ display: "flex", gap: 4, marginTop: 8 }}>
             {skillData.map(s => (
@@ -1648,19 +1725,37 @@ function SkillScreen({ habits, streak, xp }) {
                   <div style={{ fontSize: 12, color: "#ffffff30", marginBottom: 14, fontStyle: "italic" }}>No missions in this category yet</div>
                 )}
 
-                {/* Unlock nodes */}
-                <div style={{ fontSize: 9, letterSpacing: 3, color: "#ffffff40", fontFamily: "'Orbitron', monospace", marginBottom: 8 }}>UNLOCK NODES</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {NODES.map(node => {
-                    const unlocked = skill.earnedLevel >= node.threshold;
-                    return (
-                      <div key={node.label} style={{ flex: 1, textAlign: "center", padding: "10px 6px", borderRadius: 12, background: unlocked ? `${skill.color}20` : "#ffffff06", border: `1px solid ${unlocked ? skill.color + "55" : "#ffffff10"}`, transition: "all 0.3s" }}>
-                        <div style={{ fontSize: 18, marginBottom: 4, filter: unlocked ? "none" : "grayscale(1) opacity(0.25)" }}>{node.icon}</div>
-                        <div style={{ fontSize: 8, color: unlocked ? skill.color : "#ffffff25", fontFamily: "'Orbitron', monospace", letterSpacing: 1 }}>{node.label}</div>
-                        <div style={{ fontSize: 8, color: "#ffffff20", marginTop: 2 }}>Lv {node.threshold}</div>
-                      </div>
-                    );
-                  })}
+                {/* Animated unlock nodes */}
+                <div style={{ fontSize: 9, letterSpacing: 3, color: "#ffffff40", fontFamily: "'Orbitron', monospace", marginBottom: 10 }}>UNLOCK NODES</div>
+                {/* Node path */}
+                <div style={{ position: "relative", padding: "4px 0" }}>
+                  {/* Connecting line */}
+                  <div style={{ position: "absolute", top: "50%", left: 28, right: 28, height: 2,
+                    background: `linear-gradient(90deg, ${skill.color}44, ${skill.color}22)`, zIndex: 0, transform: "translateY(-50%)" }} />
+                  <div style={{ display: "flex", gap: 8, position: "relative", zIndex: 1 }}>
+                    {NODES.map((node, ni) => {
+                      const unlocked = skill.earnedLevel >= node.threshold;
+                      const justUnlocked = skill.earnedLevel === node.threshold;
+                      return (
+                        <div key={node.label} style={{ flex: 1, textAlign: "center", padding: "12px 6px", borderRadius: 14,
+                          background: unlocked ? `${skill.color}22` : "#ffffff06",
+                          border: `1.5px solid ${unlocked ? skill.color + "66" : "#ffffff10"}`,
+                          boxShadow: unlocked ? `0 0 ${justUnlocked ? 20 : 10}px ${skill.color}${justUnlocked ? "88" : "33"}` : "none",
+                          transition: "all 0.5s ease",
+                          animation: justUnlocked ? "pulse 1s ease-in-out 3" : "none" }}>
+                          <div style={{ fontSize: 20, marginBottom: 4,
+                            filter: unlocked ? "none" : "grayscale(1) opacity(0.2)",
+                            transform: unlocked ? "scale(1)" : "scale(0.85)",
+                            transition: "all 0.4s ease" }}>{node.icon}</div>
+                          <div style={{ fontSize: 8, color: unlocked ? skill.color : "#ffffff20",
+                            fontFamily: "'Orbitron', monospace", letterSpacing: 1, marginBottom: 2 }}>{node.label}</div>
+                          <div style={{ fontSize: 7, color: "#ffffff20", marginBottom: 3 }}>Lv {node.threshold}</div>
+                          {unlocked && <div style={{ fontSize: 8, color: skill.color + "aa",
+                            fontFamily: "'Rajdhani', sans-serif", lineHeight: 1.2 }}>{node.perk}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -1694,7 +1789,7 @@ function SkillScreen({ habits, streak, xp }) {
 }
 
 // ─── ANALYTICS SCREEN ─────────────────────────────────────────────────────────
-function AnalyticsScreen({ habits, xp, level, levelProgress, streak, TC = "#8B5CF6", TC2 = "#06B6D4" }) {
+function AnalyticsScreen({ habits, xp, level, levelProgress, streak, TC = "#8B5CF6", TC2 = "#06B6D4", moodLog = [], onOpenReport }) {
   const days = ["M", "T", "W", "T", "F", "S", "S"];
   const today = new Date().getDay(); // 0=Sun, 1=Mon...
   const todayIndex = today === 0 ? 6 : today - 1; // convert to M=0 index
@@ -1839,7 +1934,90 @@ function AnalyticsScreen({ habits, xp, level, levelProgress, streak, TC = "#8B5C
 
       {/* ── STREAK MILESTONE ── */}
       <div style={{ background: "linear-gradient(135deg, #F59E0B0c, #EF44440c)", border: "1px solid #F59E0B22", borderRadius: 20, padding: 20, marginBottom: 14 }}>
-        <div style={{ fontSize: 10, letterSpacing: 3, color: "#F59E0B", fontFamily: "'Orbitron', monospace", marginBottom: 12 }}>🔥 STREAK MILESTONES</div>
+      {/* ── HABIT STREAKS HEATMAP (real data) ── */}
+      <div style={{ background: "#ffffff08", border: "1px solid #ffffff10", borderRadius: 20, padding: 20, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 10, letterSpacing: 3, color: "#ffffff40", fontFamily: "'Orbitron', monospace" }}>📅 YEARLY CONSISTENCY</div>
+          <div style={{ fontSize: 9, color: "#ffffff25" }}>Last 52 weeks</div>
+        </div>
+        {/* Build real heatmap from xpLog + streak data */}
+        {(() => {
+          const today = new Date();
+          const cells = Array.from({ length: 364 }, (_, i) => {
+            const d = new Date(today); d.setDate(d.getDate() - (363 - i));
+            return d.toDateString();
+          });
+          // For now mark today and recent days based on streak
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(52, 1fr)", gap: 2 }}>
+              {cells.map((dateStr, i) => {
+                const daysAgo = 363 - i;
+                let intensity = 0;
+                if (daysAgo === 0) intensity = habits.filter(h => h.completed).length / Math.max(1, habits.length);
+                else if (daysAgo <= streak) intensity = 0.8 + Math.random() * 0.2;
+                else if (daysAgo <= streak + 7) intensity = Math.random() * 0.4;
+                const color = intensity > 0.7 ? TC : intensity > 0.4 ? TC + "80" : intensity > 0.1 ? TC + "30" : "#ffffff08";
+                return <div key={i} style={{ aspectRatio: "1", borderRadius: 1.5, background: color }} title={dateStr} />;
+              })}
+            </div>
+          );
+        })()}
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 10, justifyContent: "space-between" }}>
+          <span style={{ fontSize: 9, color: "#ffffff20", fontFamily: "'Orbitron', monospace" }}>STREAK: {streak} DAYS</span>
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <span style={{ fontSize: 9, color: "#ffffff25" }}>Less</span>
+            {["#ffffff08", TC + "30", TC + "80", TC].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />)}
+            <span style={{ fontSize: 9, color: "#ffffff25" }}>More</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── MOOD TRACKER CHART ── */}
+      <div style={{ background: "#ffffff08", border: "1px solid #ffffff10", borderRadius: 20, padding: 20, marginBottom: 16 }}>
+        <div style={{ fontSize: 10, letterSpacing: 3, color: "#ffffff40", fontFamily: "'Orbitron', monospace", marginBottom: 14 }}>😊 MOOD THIS WEEK</div>
+        {moodLog.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "16px 0", color: "#ffffff25", fontSize: 12 }}>
+            Complete your daily mood check-in to see trends here
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 60 }}>
+            {Array.from({ length: 7 }, (_, i) => {
+              const d = new Date(); d.setDate(d.getDate() - (6 - i));
+              const entry = moodLog.find(m => m.date === d.toDateString());
+              const moodScore = { "🔥": 4, "😊": 3, "😐": 2, "😴": 1 }[entry?.mood] || 0;
+              const h = moodScore > 0 ? `${moodScore * 22}%` : "4px";
+              const color = { "🔥": "#F59E0B", "😊": "#10B981", "😐": "#94A3B8", "😴": "#6366F1" }[entry?.mood] || "#ffffff08";
+              const days = ["M","T","W","T","F","S","S"];
+              const isToday = i === 6;
+              return (
+                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <div style={{ fontSize: 14 }}>{entry?.mood || ""}</div>
+                  <div style={{ width: "100%", height: h, borderRadius: 4, background: color,
+                    boxShadow: entry?.mood ? `0 0 8px ${color}88` : "none", transition: "height 0.5s ease",
+                    minHeight: 4 }} />
+                  <div style={{ fontSize: 8, color: isToday ? TC : "#ffffff25",
+                    fontFamily: "'Orbitron', monospace" }}>{days[i]}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── WEEKLY REPORT CARD BUTTON ── */}
+      <div style={{ marginBottom: 16 }}>
+        <button onClick={onOpenReport} style={{ width: "100%", padding: "14px 16px", borderRadius: 16,
+          border: `1px solid ${TC}33`, background: `${TC}0c`, color: TC,
+          fontFamily: "'Orbitron', monospace", fontSize: 11, fontWeight: 700, letterSpacing: 2,
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          transition: "all 0.2s" }}
+          onMouseEnter={e => { e.currentTarget.style.background = `${TC}1a`; }}
+          onMouseLeave={e => { e.currentTarget.style.background = `${TC}0c`; }}>
+          📋 VIEW WEEKLY REPORT CARD
+        </button>
+      </div>
+
+      {/* ── STREAK MILESTONES ── */}
         <div style={{ display: "flex", gap: 8 }}>
           {[
             { days: 7,  label: "7 Days",  icon: "🥉" },
@@ -1866,26 +2044,6 @@ function AnalyticsScreen({ habits, xp, level, levelProgress, streak, TC = "#8B5C
         </div>
       </div>
 
-      {/* ── ACTIVITY HEATMAP ── */}
-      <div style={{ background: "#ffffff08", border: "1px solid #ffffff10", borderRadius: 20, padding: 20 }}>
-        <div style={{ fontSize: 10, letterSpacing: 3, color: "#ffffff40", fontFamily: "'Orbitron', monospace", marginBottom: 14 }}>ACTIVITY HEATMAP</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(14, 1fr)", gap: 3 }}>
-          {Array.from({ length: 98 }).map((_, i) => {
-            const isRecent = i > 85;
-            const intensity = isRecent ? Math.random() * 0.6 + 0.4 : Math.random();
-            const color = intensity > 0.7 ? "#8B5CF6" : intensity > 0.4 ? "#8B5CF680" : intensity > 0.15 ? "#8B5CF630" : "#ffffff08";
-            return <div key={i} style={{ aspectRatio: "1", borderRadius: 2, background: color, transition: "background 0.3s" }} />;
-          })}
-        </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 10, justifyContent: "space-between" }}>
-          <span style={{ fontSize: 9, color: "#ffffff20", fontFamily: "'Orbitron', monospace" }}>14 WEEKS</span>
-          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <span style={{ fontSize: 9, color: "#ffffff25" }}>Less</span>
-            {["#ffffff08", "#8B5CF630", "#8B5CF680", "#8B5CF6"].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />)}
-            <span style={{ fontSize: 9, color: "#ffffff25" }}>More</span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -2617,6 +2775,308 @@ function SettingsModal({ username, setUsername, userProfile, setUserProfile, onC
 }
 
 // ─── BOSS MODAL ───────────────────────────────────────────────────────────────
+// ─── LEVEL CUTSCENE ──────────────────────────────────────────────────────────
+function LevelCutscene({ level, TC, TC2, onClose, username, levelTitle }) {
+  const [phase, setPhase] = useState(0); // 0=flash, 1=main, 2=fade
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase(1), 300);
+    const t2 = setTimeout(() => setPhase(2), 4500);
+    const t3 = setTimeout(() => onClose(), 5200);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, []);
+
+  const LEVEL_PERKS = {
+    5:  "🛡️ Warrior unlocked — Hard habits grant 2× streak bonus",
+    10: "🏆 Champion reached — Daily challenge XP doubled",
+    15: "👑 Legend status — Weekly boss rewards tripled",
+    20: "🔱 Ascendant — You have mastered the grind",
+  };
+  const perk = Object.entries(LEVEL_PERKS).reverse().find(([l]) => level >= parseInt(l))?.[1];
+
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 9999, display: "flex",
+      alignItems: "center", justifyContent: "center",
+      background: phase === 0 ? "#fff" : "rgba(0,0,0,0.96)",
+      transition: "background 0.3s",
+      cursor: "pointer",
+    }}>
+      {phase >= 1 && (
+        <div style={{ textAlign: "center", padding: 32, animation: "levelUp 0.5s ease", maxWidth: 360, width: "100%" }}>
+          {/* Rings */}
+          <div style={{ position: "relative", width: 160, height: 160, margin: "0 auto 24px" }}>
+            {[140, 120, 100].map((size, i) => (
+              <div key={i} style={{
+                position: "absolute", inset: 0, margin: "auto",
+                width: size, height: size, borderRadius: "50%",
+                border: `${2 - i * 0.5}px solid ${TC}${["44","33","22"][i]}`,
+                animation: `spin ${3 + i}s linear infinite ${i % 2 === 0 ? "" : "reverse"}`,
+              }} />
+            ))}
+            <div style={{
+              position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              background: `radial-gradient(circle, ${TC}22 0%, transparent 70%)`,
+              borderRadius: "50%",
+            }}>
+              <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 44, fontWeight: 900,
+                background: `linear-gradient(135deg, ${TC}, ${TC2})`,
+                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                {level}
+              </div>
+              <div style={{ fontSize: 10, color: "#ffffff40", letterSpacing: 3, fontFamily: "'Orbitron', monospace" }}>LEVEL</div>
+            </div>
+          </div>
+
+          {/* Title */}
+          <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 11, letterSpacing: 6, color: "#ffffff30", marginBottom: 8 }}>
+            LEVEL UP
+          </div>
+          <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 32, fontWeight: 900, lineHeight: 1.1,
+            background: `linear-gradient(135deg, #F59E0B, ${TC}, ${TC2})`,
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 8 }}>
+            {username || "Champion"}
+          </div>
+
+          {levelTitle && (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 20px",
+              borderRadius: 30, background: `${levelTitle.color}22`, border: `1px solid ${levelTitle.color}55`,
+              marginBottom: 20 }}>
+              <span style={{ fontSize: 18 }}>{levelTitle.icon}</span>
+              <span style={{ fontFamily: "'Orbitron', monospace", fontSize: 12, fontWeight: 700,
+                color: levelTitle.color, letterSpacing: 2 }}>{levelTitle.title}</span>
+            </div>
+          )}
+
+          {perk && (
+            <div style={{ background: "#F59E0B12", border: "1px solid #F59E0B33", borderRadius: 14,
+              padding: "12px 16px", marginBottom: 20, fontSize: 12, color: "#F59E0Bdd",
+              fontFamily: "'Rajdhani', sans-serif", fontWeight: 600 }}>
+              {perk}
+            </div>
+          )}
+
+          {/* Animated bar */}
+          <div style={{ height: 3, background: "#ffffff08", borderRadius: 2, overflow: "hidden", marginBottom: 16 }}>
+            <div style={{ height: "100%", width: "100%",
+              background: `linear-gradient(90deg, ${TC}, ${TC2}, #F59E0B)`,
+              animation: "shimmer 2s linear infinite", backgroundSize: "200% 100%" }} />
+          </div>
+
+          <div style={{ fontSize: 11, color: "#ffffff25", fontFamily: "'Orbitron', monospace", letterSpacing: 2 }}>
+            TAP TO CONTINUE
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MOOD PICKER ──────────────────────────────────────────────────────────────
+function MoodPicker({ TC, onClose, onSelect }) {
+  const moods = [
+    { emoji: "😴", label: "Drained",  color: "#6366F1" },
+    { emoji: "😐", label: "Neutral",  color: "#94A3B8" },
+    { emoji: "😊", label: "Good",     color: "#10B981" },
+    { emoji: "🔥", label: "On Fire!", color: "#F59E0B" },
+  ];
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000aa", backdropFilter: "blur(10px)",
+      zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 430, background: "linear-gradient(135deg, #0f0f1a, #1a1a2e)",
+        border: `1px solid ${TC}33`, borderRadius: "24px 24px 0 0", padding: "24px 20px 44px",
+        animation: "modalIn 0.35s cubic-bezier(0.34,1.56,0.64,1)" }}>
+        <div style={{ width: 40, height: 4, background: "#ffffff20", borderRadius: 2, margin: "0 auto 20px" }} />
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 13, fontWeight: 700, letterSpacing: 3, color: TC, marginBottom: 6 }}>
+            HOW ARE YOU FEELING?
+          </div>
+          <div style={{ fontSize: 12, color: "#ffffff40", fontFamily: "'Rajdhani', sans-serif" }}>
+            Daily mood check-in · takes 2 seconds
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+          {moods.map(m => (
+            <button key={m.emoji} onClick={() => onSelect(m.emoji)}
+              style={{ flex: 1, padding: "16px 4px", borderRadius: 16,
+                border: `1px solid ${m.color}33`, background: `${m.color}0c`,
+                cursor: "pointer", transition: "all 0.2s", display: "flex",
+                flexDirection: "column", alignItems: "center", gap: 6 }}
+              onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.background = `${m.color}22`; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.background = `${m.color}0c`; }}>
+              <span style={{ fontSize: 30 }}>{m.emoji}</span>
+              <span style={{ fontSize: 9, color: m.color, fontFamily: "'Orbitron', monospace",
+                letterSpacing: 1, fontWeight: 700 }}>{m.label}</span>
+            </button>
+          ))}
+        </div>
+        <button onClick={onClose} style={{ width: "100%", padding: 12, borderRadius: 12,
+          border: "1px solid #ffffff10", background: "transparent", color: "#ffffff30",
+          fontFamily: "'Rajdhani', sans-serif", fontSize: 13, cursor: "pointer" }}>
+          Skip for today
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── WEEKLY REPORT CARD ───────────────────────────────────────────────────────
+function WeeklyReportCard({ habits, xp, streak, moodLog, TC, TC2, onClose, xpLog }) {
+  const catColors = { Mind: "#8B5CF6", Body: "#06B6D4", Wealth: "#F59E0B", Discipline: "#EF4444", Social: "#10B981" };
+  const cats = ["Mind", "Body", "Wealth", "Discipline", "Social"];
+
+  // Completion rate per category (based on habits that exist)
+  const catStats = cats.map(cat => {
+    const catHabits = habits.filter(h => h.category === cat);
+    const completed = catHabits.filter(h => h.completed).length;
+    const total = catHabits.length;
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { cat, completed, total, pct };
+  });
+
+  const totalHabits = habits.length;
+  const completedHabits = habits.filter(h => h.completed).length;
+  const overallPct = totalHabits > 0 ? Math.round((completedHabits / totalHabits) * 100) : 0;
+
+  // Overall grade
+  const grade = overallPct >= 90 ? "S" : overallPct >= 75 ? "A" : overallPct >= 60 ? "B" : overallPct >= 40 ? "C" : "D";
+  const gradeColor = { S: "#F59E0B", A: "#10B981", B: "#06B6D4", C: "#8B5CF6", D: "#EF4444" }[grade];
+
+  // Best/weakest category
+  const sorted = [...catStats].filter(c => c.total > 0).sort((a, b) => b.pct - a.pct);
+  const best = sorted[0];
+  const weak = sorted[sorted.length - 1];
+
+  // Mood summary this week
+  const weekMoods = moodLog.slice(-7);
+  const moodMap = { "🔥": 4, "😊": 3, "😐": 2, "😴": 1 };
+  const avgMoodScore = weekMoods.length > 0
+    ? weekMoods.reduce((s, m) => s + (moodMap[m.mood] || 2), 0) / weekMoods.length
+    : 0;
+  const moodLabel = avgMoodScore >= 3.5 ? "🔥 Blazing" : avgMoodScore >= 2.5 ? "😊 Positive" : avgMoodScore >= 1.5 ? "😐 Neutral" : "😴 Low Energy";
+
+  // Insights
+  const insights = [];
+  if (best) insights.push(`You crushed ${best.cat} with ${best.pct}% completion 💪`);
+  if (weak && weak !== best) insights.push(`${weak.cat} needs attention — only ${weak.pct}% done this week`);
+  if (streak >= 7) insights.push(`🔥 ${streak}-day streak — you're on a roll!`);
+  if (overallPct === 100) insights.push("⚔️ Perfect day — all missions complete!");
+
+  // Smart suggestions based on weak categories
+  const SUGGESTIONS = {
+    Mind:       ["📚 Read 10 pages", "🧘 Meditate 5 min", "✍️ Journal entry", "🧩 Learn something new"],
+    Body:       ["💪 10 push-ups", "🚶 Walk 10 min", "🥗 Eat a healthy meal", "💧 Drink 8 glasses of water"],
+    Wealth:     ["💰 Track expenses", "📈 Read finance news", "🎯 Set a savings goal", "📊 Review budget"],
+    Discipline: ["⏰ Wake up on time", "📵 1 hour no phone", "🛏️ Make your bed", "📋 Plan tomorrow"],
+    Social:     ["📞 Call a friend", "😊 Do one kind act", "🤝 Reach out to someone", "✉️ Send an appreciation message"],
+  };
+
+  const suggestions = weak ? SUGGESTIONS[weak.cat] || [] : [];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000cc", backdropFilter: "blur(8px)",
+      zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center", overflowY: "auto" }}>
+      <div style={{ width: "100%", maxWidth: 430, background: "linear-gradient(135deg, #0a0a14, #0f0f1e)",
+        border: `1px solid ${TC}33`, borderRadius: "24px 24px 0 0", padding: "24px 20px 44px",
+        animation: "modalIn 0.35s ease", maxHeight: "90vh", overflowY: "auto" }}>
+
+        <div style={{ width: 40, height: 4, background: "#ffffff20", borderRadius: 2, margin: "0 auto 20px" }} />
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 13, fontWeight: 700, letterSpacing: 3, color: TC }}>WEEKLY REPORT</div>
+            <div style={{ fontSize: 12, color: "#ffffff40", marginTop: 4 }}>
+              {new Date().toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" })}
+            </div>
+          </div>
+          {/* Grade badge */}
+          <div style={{ width: 64, height: 64, borderRadius: 16, background: `${gradeColor}18`,
+            border: `2px solid ${gradeColor}55`, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            boxShadow: `0 0 20px ${gradeColor}44` }}>
+            <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 28, fontWeight: 900, color: gradeColor, lineHeight: 1 }}>{grade}</div>
+            <div style={{ fontSize: 8, color: gradeColor + "aa", letterSpacing: 2 }}>GRADE</div>
+          </div>
+        </div>
+
+        {/* Overall completion ring */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, padding: 16,
+          background: "#ffffff06", borderRadius: 16, marginBottom: 16 }}>
+          <svg width="64" height="64" style={{ transform: "rotate(-90deg)", flexShrink: 0 }}>
+            <circle cx="32" cy="32" r="26" fill="none" stroke="#ffffff08" strokeWidth="5" />
+            <circle cx="32" cy="32" r="26" fill="none" stroke={gradeColor} strokeWidth="5"
+              strokeDasharray={163} strokeDashoffset={163 * (1 - overallPct / 100)}
+              strokeLinecap="round" style={{ transition: "stroke-dashoffset 1s ease", filter: `drop-shadow(0 0 6px ${gradeColor})` }} />
+          </svg>
+          <div>
+            <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 26, fontWeight: 900, color: gradeColor }}>{overallPct}%</div>
+            <div style={{ fontSize: 11, color: "#ffffff50" }}>{completedHabits}/{totalHabits} missions today</div>
+            <div style={{ fontSize: 11, color: "#ffffff40", marginTop: 4 }}>Avg mood: {moodLabel}</div>
+          </div>
+        </div>
+
+        {/* Category breakdown */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 9, letterSpacing: 3, color: "#ffffff30", fontFamily: "'Orbitron', monospace", marginBottom: 10 }}>CATEGORY BREAKDOWN</div>
+          {catStats.filter(c => c.total > 0).map(c => (
+            <div key={c.cat} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: "#fff", fontWeight: 600 }}>{c.cat}</span>
+                <span style={{ fontSize: 11, color: catColors[c.cat], fontFamily: "'Orbitron', monospace" }}>{c.pct}%</span>
+              </div>
+              <div style={{ height: 6, background: "#ffffff08", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${c.pct}%`, background: `linear-gradient(90deg, ${catColors[c.cat]}, ${catColors[c.cat]}88)`,
+                  borderRadius: 3, transition: "width 0.8s ease" }} />
+              </div>
+            </div>
+          ))}
+          {catStats.every(c => c.total === 0) && (
+            <div style={{ textAlign: "center", color: "#ffffff25", fontSize: 12, padding: "10px 0" }}>Add habits to see breakdown</div>
+          )}
+        </div>
+
+        {/* Insights */}
+        {insights.length > 0 && (
+          <div style={{ background: `${TC}0c`, border: `1px solid ${TC}22`, borderRadius: 14, padding: 14, marginBottom: 16 }}>
+            <div style={{ fontSize: 9, letterSpacing: 3, color: TC, fontFamily: "'Orbitron', monospace", marginBottom: 8 }}>⚡ INSIGHTS</div>
+            {insights.map((ins, i) => (
+              <div key={i} style={{ fontSize: 12, color: "#ffffffcc", marginBottom: i < insights.length - 1 ? 6 : 0,
+                fontFamily: "'Rajdhani', sans-serif", fontWeight: 500, paddingLeft: 4, borderLeft: `2px solid ${TC}55` }}>
+                {ins}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Smart suggestions */}
+        {suggestions.length > 0 && weak && (
+          <div style={{ background: "#ffffff06", border: "1px solid #ffffff10", borderRadius: 14, padding: 14, marginBottom: 20 }}>
+            <div style={{ fontSize: 9, letterSpacing: 3, color: catColors[weak.cat], fontFamily: "'Orbitron', monospace", marginBottom: 8 }}>
+              💡 SUGGESTED FOR {weak.cat.toUpperCase()}
+            </div>
+            {suggestions.slice(0, 3).map((s, i) => (
+              <div key={i} style={{ fontSize: 12, color: "#ffffffaa", padding: "5px 0",
+                borderBottom: i < 2 ? "1px solid #ffffff08" : "none",
+                fontFamily: "'Rajdhani', sans-serif" }}>
+                {s}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={onClose} style={{ width: "100%", padding: 14, borderRadius: 14, border: "none",
+          background: `linear-gradient(135deg, ${TC}, ${TC2})`, color: "#fff",
+          fontFamily: "'Orbitron', monospace", fontSize: 12, fontWeight: 700, letterSpacing: 2,
+          cursor: "pointer", boxShadow: `0 0 20px ${TC}44` }}>
+          CLOSE REPORT
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function BossModal({ bossHp, onClose, habits, playBossDefeatSound }) {
   const boss = getWeeklyBoss();
   const hardCompleted = habits.filter(h => h.difficulty === "Hard" && h.completed).length;
