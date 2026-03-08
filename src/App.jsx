@@ -2234,86 +2234,131 @@ function FocusScreen({ focusTime, focusRunning, setFocusRunning, setFocusTime, f
 
 // ─── PROFILE SCREEN ───────────────────────────────────────────────────────────
 function ProfileScreen({ xp, level, levelProgress, habits, streak, username, userProfile, onOpenSettings, xpLog, TC = "#8B5CF6", TC2 = "#06B6D4" }) {
-  const [showShare, setShowShare] = useState(false);
   const [showChallenge, setShowChallenge] = useState(false);
+  const [showSharePreview, setShowSharePreview] = useState(false);
   const [challengeLink, setChallengeLink] = useState("");
-  const shareCardRef = useRef(null);
+  const [copied, setCopied] = useState(false);
 
   const generateChallengeLink = () => {
     const data = btoa(JSON.stringify({ name: username, level, streak, xp, habits: habits.length }));
-    const link = `${window.location.origin}?challenge=${data}`;
+    const link = `https://ascend-app-six.vercel.app/?c=${data.slice(0, 40)}`;
     setChallengeLink(link);
+    setCopied(false);
     setShowChallenge(true);
   };
 
+  const copyLink = () => {
+    const data = btoa(JSON.stringify({ name: username, level, streak, xp, habits: habits.length }));
+    const full = `${window.location.origin}?challenge=${data}`;
+    navigator.clipboard.writeText(full).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }).catch(() => {
+      // Fallback
+      const el = document.createElement("textarea");
+      el.value = full; document.body.appendChild(el);
+      el.select(); document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
   const shareCard = () => {
-    // Use html2canvas-like approach via canvas
     const canvas = document.createElement("canvas");
-    canvas.width = 600; canvas.height = 340;
+    canvas.width = 800; canvas.height = 440;
     const ctx = canvas.getContext("2d");
     const t = getTheme(userProfile?.theme || "purple");
 
-    // Background
-    const grad = ctx.createLinearGradient(0, 0, 600, 340);
-    grad.addColorStop(0, "#030712"); grad.addColorStop(1, "#0f0720");
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, 600, 340);
+    // Dark background
+    const bg = ctx.createLinearGradient(0, 0, 800, 440);
+    bg.addColorStop(0, "#050510"); bg.addColorStop(1, "#0a0520");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, 800, 440);
 
-    // Glow circle
-    const glow = ctx.createRadialGradient(80, 170, 0, 80, 170, 160);
-    glow.addColorStop(0, t.a + "33"); glow.addColorStop(1, "transparent");
-    ctx.fillStyle = glow; ctx.fillRect(0, 0, 600, 340);
+    // Glow orbs
+    const g1 = ctx.createRadialGradient(100, 220, 0, 100, 220, 220);
+    g1.addColorStop(0, t.a + "25"); g1.addColorStop(1, "transparent");
+    ctx.fillStyle = g1; ctx.fillRect(0, 0, 800, 440);
+    const g2 = ctx.createRadialGradient(700, 100, 0, 700, 100, 200);
+    g2.addColorStop(0, t.b + "20"); g2.addColorStop(1, "transparent");
+    ctx.fillStyle = g2; ctx.fillRect(0, 0, 800, 440);
 
-    // Border
-    ctx.strokeStyle = t.a + "44"; ctx.lineWidth = 1.5;
-    ctx.strokeRect(1, 1, 598, 338);
+    // Outer border
+    ctx.strokeStyle = t.a + "55"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(2, 2, 796, 436, 20); ctx.stroke();
+    // Inner border
+    ctx.strokeStyle = t.a + "18"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(8, 8, 784, 424, 16); ctx.stroke();
 
-    // ASCEND logo text
-    ctx.fillStyle = t.a; ctx.font = "bold 13px monospace";
-    ctx.letterSpacing = "6px"; ctx.fillText("⚔  ASCEND", 36, 50);
+    // Top accent line
+    const accentGrad = ctx.createLinearGradient(0, 0, 800, 0);
+    accentGrad.addColorStop(0, "transparent");
+    accentGrad.addColorStop(0.3, t.a);
+    accentGrad.addColorStop(0.7, t.b);
+    accentGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = accentGrad; ctx.fillRect(0, 0, 800, 3);
 
-    // Level badge
-    ctx.fillStyle = t.a + "22"; ctx.beginPath();
-    ctx.roundRect(36, 70, 160, 80, 14); ctx.fill();
-    ctx.strokeStyle = t.a + "55"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(36, 70, 160, 80, 14); ctx.stroke();
+    // ASCEND branding
+    ctx.fillStyle = t.a; ctx.font = "700 14px monospace";
+    ctx.fillText("⚔  ASCEND", 40, 50);
+    ctx.fillStyle = "#ffffff22"; ctx.font = "11px monospace";
+    ctx.fillText("HABIT RPG", 40, 68);
 
-    ctx.fillStyle = t.a; ctx.font = "bold 42px monospace";
-    ctx.fillText(`LV${level}`, 46, 128);
-    ctx.fillStyle = "#ffffff55"; ctx.font = "11px monospace";
-    ctx.fillText("LEVEL", 46, 148);
+    // Divider
+    ctx.strokeStyle = "#ffffff08"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(40, 82); ctx.lineTo(760, 82); ctx.stroke();
 
-    // XP
-    ctx.fillStyle = "#F59E0B"; ctx.font = "bold 28px monospace";
-    ctx.fillText(`${xp.toLocaleString()} XP`, 220, 120);
-    ctx.fillStyle = "#ffffff40"; ctx.font = "11px monospace";
-    ctx.fillText("TOTAL XP", 220, 140);
+    // Big level display
+    const lvlGrad = ctx.createLinearGradient(0, 120, 0, 220);
+    lvlGrad.addColorStop(0, t.a); lvlGrad.addColorStop(1, t.b);
+    ctx.fillStyle = lvlGrad; ctx.font = "900 96px monospace";
+    ctx.fillText(`${level}`, 40, 210);
+    ctx.fillStyle = "#ffffff20"; ctx.font = "700 14px monospace";
+    ctx.fillText("LEVEL", 40, 232);
 
-    // Streak
-    ctx.fillStyle = "#EF4444"; ctx.font = "bold 28px monospace";
-    ctx.fillText(`🔥 ${streak}`, 220, 180);
-    ctx.fillStyle = "#ffffff40"; ctx.font = "11px monospace";
-    ctx.fillText("DAY STREAK", 220, 198);
+    // Vertical separator
+    ctx.strokeStyle = "#ffffff10"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(200, 100); ctx.lineTo(200, 340); ctx.stroke();
 
-    // Username
-    ctx.fillStyle = "#fff"; ctx.font = "bold 32px sans-serif";
-    ctx.fillText(username || "Champion", 36, 230);
-    ctx.fillStyle = "#ffffff40"; ctx.font = "13px monospace";
-    ctx.fillText("is leveling up their life on Ascend", 36, 255);
+    // Stats column
+    const stats = [
+      { label: "TOTAL XP", value: xp.toLocaleString() + " XP", color: "#F59E0B" },
+      { label: "DAY STREAK", value: streak + " days", color: "#EF4444" },
+      { label: "HABITS", value: habits.length + " active", color: t.b },
+    ];
+    stats.forEach((s, i) => {
+      const y = 140 + i * 70;
+      ctx.fillStyle = s.color; ctx.font = "700 26px monospace";
+      ctx.fillText(s.value, 224, y);
+      ctx.fillStyle = "#ffffff30"; ctx.font = "10px monospace";
+      ctx.fillText(s.label, 224, y + 18);
+    });
 
-    // Bottom bar
-    const bar = ctx.createLinearGradient(0, 290, 600, 290);
-    bar.addColorStop(0, t.a); bar.addColorStop(1, t.b);
-    ctx.fillStyle = bar; ctx.fillRect(0, 300, 600 * (levelProgress / 100), 6);
-    ctx.fillStyle = "#ffffff10"; ctx.fillRect(0, 300, 600, 6);
-    ctx.fillStyle = bar; ctx.fillRect(0, 300, 600 * (levelProgress / 100), 6);
+    // Username section
+    ctx.strokeStyle = "#ffffff08"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(40, 310); ctx.lineTo(760, 310); ctx.stroke();
 
-    ctx.fillStyle = "#ffffff25"; ctx.font = "10px monospace";
-    ctx.fillText(`${Math.floor(levelProgress)}% TO NEXT LEVEL  ·  ascend-app.vercel.app`, 36, 326);
+    ctx.fillStyle = "#ffffff"; ctx.font = "700 28px sans-serif";
+    ctx.fillText(username || "Champion", 40, 356);
+    ctx.fillStyle = "#ffffff35"; ctx.font = "13px monospace";
+    ctx.fillText("is leveling up on Ascend", 40, 378);
+
+    // Bottom XP progress bar
+    ctx.fillStyle = "#ffffff08"; ctx.beginPath();
+    ctx.roundRect(40, 398, 720, 6, 3); ctx.fill();
+    const barGrad = ctx.createLinearGradient(0, 0, 720 * (levelProgress / 100), 0);
+    barGrad.addColorStop(0, t.a); barGrad.addColorStop(1, t.b);
+    ctx.fillStyle = barGrad; ctx.beginPath();
+    ctx.roundRect(40, 398, 720 * (levelProgress / 100), 6, 3); ctx.fill();
+    ctx.fillStyle = "#ffffff20"; ctx.font = "9px monospace";
+    ctx.fillText(`${Math.floor(levelProgress)}% to Level ${level + 1}`, 40, 424);
+    ctx.fillStyle = "#ffffff15"; ctx.font = "9px monospace";
+    ctx.fillText("ascend-app-six.vercel.app", 600, 424);
 
     canvas.toBlob(blob => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url;
-      a.download = `ascend-level-${level}.png`; a.click();
+      a.download = `ascend-lv${level}-${username || "champion"}.png`; a.click();
       URL.revokeObjectURL(url);
     });
   };
@@ -2497,61 +2542,150 @@ function ProfileScreen({ xp, level, levelProgress, habits, streak, username, use
       {/* ── SHARE & CHALLENGE BUTTONS ── */}
       <div style={{ margin: "0 16px 16px", display: "flex", gap: 10 }}>
         <button onClick={shareCard}
-          style={{ flex: 1, padding: "13px 8px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${TC}, ${TC2})`, color: "#fff", fontFamily: "'Orbitron', monospace", fontSize: 10, fontWeight: 700, letterSpacing: 2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: `0 0 20px ${TC}44` }}>
+          style={{ flex: 1, padding: "14px 8px", borderRadius: 16, border: "none",
+            background: `linear-gradient(135deg, ${TC}, ${TC2})`,
+            color: "#fff", fontFamily: "'Orbitron', monospace", fontSize: 10,
+            fontWeight: 700, letterSpacing: 1.5, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            boxShadow: `0 4px 24px ${TC}44, 0 0 0 1px ${TC}22` }}>
           📤 SHARE CARD
         </button>
         <button onClick={generateChallengeLink}
-          style={{ flex: 1, padding: "13px 8px", borderRadius: 14, border: `1px solid ${TC}44`, background: `${TC}12`, color: TC, fontFamily: "'Orbitron', monospace", fontSize: 10, fontWeight: 700, letterSpacing: 2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          style={{ flex: 1, padding: "14px 8px", borderRadius: 16,
+            border: `1.5px solid ${TC}55`, background: `${TC}10`,
+            color: TC, fontFamily: "'Orbitron', monospace", fontSize: 10,
+            fontWeight: 700, letterSpacing: 1.5, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           🤝 CHALLENGE
         </button>
       </div>
 
       {/* ── FRIEND CHALLENGE MODAL ── */}
       {showChallenge && (
-        <div style={{ position: "fixed", inset: 0, background: "#000000bb", backdropFilter: "blur(8px)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-          <div style={{ width: "100%", maxWidth: 430, background: "linear-gradient(135deg, #0f0f1a, #1a1a2e)", border: `1px solid ${TC}44`, borderRadius: "24px 24px 0 0", padding: "24px 20px 40px", animation: "modalIn 0.3s ease" }}>
-            <div style={{ width: 40, height: 4, background: "#ffffff20", borderRadius: 2, margin: "0 auto 20px" }} />
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 40, marginBottom: 8 }}>🤝</div>
-              <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 14, fontWeight: 700, letterSpacing: 3, color: TC }}>CHALLENGE A FRIEND</div>
-              <div style={{ fontSize: 13, color: "#ffffff50", marginTop: 6, fontFamily: "'Rajdhani', sans-serif" }}>Share this link and race to build better habits!</div>
-            </div>
-            {/* Stats being challenged */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {[
-                { label: "LEVEL", value: level, color: TC },
-                { label: "STREAK", value: `${streak}🔥`, color: "#EF4444" },
-                { label: "HABITS", value: habits.length, color: TC2 },
-              ].map(s => (
-                <div key={s.label} style={{ flex: 1, textAlign: "center", background: `${s.color}0c`, border: `1px solid ${s.color}22`, borderRadius: 12, padding: "10px 4px" }}>
-                  <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 18, fontWeight: 900, color: s.color }}>{s.value}</div>
-                  <div style={{ fontSize: 8, color: "#ffffff30", letterSpacing: 2, marginTop: 3 }}>{s.label}</div>
+        <div onClick={() => setShowChallenge(false)}
+          style={{ position: "fixed", inset: 0, background: "#000000bb",
+            backdropFilter: "blur(12px)", zIndex: 1000,
+            display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 430,
+              background: "linear-gradient(160deg, #0d0d1f 0%, #12122a 100%)",
+              border: `1px solid ${TC}44`, borderRadius: "28px 28px 0 0",
+              padding: "20px 20px 44px", animation: "modalIn 0.35s cubic-bezier(0.34,1.56,0.64,1)" }}>
+
+            {/* Handle */}
+            <div style={{ width: 44, height: 4, background: "#ffffff20", borderRadius: 2, margin: "0 auto 24px" }} />
+
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14,
+                background: `linear-gradient(135deg, ${TC}, ${TC2})`,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+                boxShadow: `0 0 20px ${TC}44`, flexShrink: 0 }}>
+                🤝
+              </div>
+              <div>
+                <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 14, fontWeight: 700,
+                  letterSpacing: 2, color: "#fff", marginBottom: 3 }}>CHALLENGE A FRIEND</div>
+                <div style={{ fontSize: 12, color: "#ffffff45", fontFamily: "'Rajdhani', sans-serif" }}>
+                  Send your stats — can they beat you?
                 </div>
-              ))}
+              </div>
             </div>
-            {/* Link box */}
-            <div style={{ background: "#ffffff08", border: "1px solid #ffffff15", borderRadius: 12, padding: "12px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ flex: 1, fontSize: 11, color: "#ffffff60", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{challengeLink}</div>
-              <button onClick={() => { navigator.clipboard.writeText(challengeLink); }}
-                style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: TC, color: "#fff", fontFamily: "'Orbitron', monospace", fontSize: 9, fontWeight: 700, letterSpacing: 1, cursor: "pointer", flexShrink: 0 }}>
-                COPY
+
+            {/* Stats card */}
+            <div style={{ background: "#ffffff06", border: `1px solid ${TC}22`,
+              borderRadius: 18, padding: "14px 16px", marginBottom: 16,
+              position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2,
+                background: `linear-gradient(90deg, transparent, ${TC}, ${TC2}, transparent)` }} />
+              <div style={{ fontSize: 9, color: TC, fontFamily: "'Orbitron', monospace",
+                letterSpacing: 3, marginBottom: 12 }}>YOUR CHALLENGE STATS</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[
+                  { label: "LEVEL",   value: level,           color: TC,        icon: "⚔️" },
+                  { label: "STREAK",  value: `${streak}d`,    color: "#EF4444", icon: "🔥" },
+                  { label: "XP",      value: xp.toLocaleString(), color: "#F59E0B", icon: "⭐" },
+                  { label: "HABITS",  value: habits.length,   color: TC2,       icon: "📋" },
+                ].map(s => (
+                  <div key={s.label} style={{ flex: 1, textAlign: "center",
+                    background: `${s.color}0a`, border: `1px solid ${s.color}20`,
+                    borderRadius: 12, padding: "10px 4px" }}>
+                    <div style={{ fontSize: 11, marginBottom: 2 }}>{s.icon}</div>
+                    <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 13,
+                      fontWeight: 900, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
+                    <div style={{ fontSize: 7, color: "#ffffff25", letterSpacing: 1.5,
+                      marginTop: 3, fontFamily: "'Orbitron', monospace" }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Copy link box */}
+            <div style={{ background: "#ffffff06", border: `1px solid ${copied ? "#10B981" : "#ffffff12"}`,
+              borderRadius: 14, padding: "12px 14px", marginBottom: 14,
+              display: "flex", alignItems: "center", gap: 10,
+              transition: "border-color 0.3s" }}>
+              <div style={{ flex: 1, fontSize: 11, color: "#ffffff35",
+                fontFamily: "monospace", overflow: "hidden",
+                textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                ascend-app-six.vercel.app/?c=…
+              </div>
+              <button onClick={copyLink}
+                style={{ padding: "8px 16px", borderRadius: 10, border: "none",
+                  background: copied ? "#10B981" : `linear-gradient(135deg, ${TC}, ${TC2})`,
+                  color: "#fff", fontFamily: "'Orbitron', monospace", fontSize: 9,
+                  fontWeight: 700, letterSpacing: 1, cursor: "pointer",
+                  flexShrink: 0, transition: "background 0.3s",
+                  display: "flex", alignItems: "center", gap: 5 }}>
+                {copied ? "✓ COPIED!" : "📋 COPY"}
               </button>
             </div>
-            {/* Share via */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+
+            {/* Share via apps */}
+            <div style={{ fontSize: 9, color: "#ffffff25", fontFamily: "'Orbitron', monospace",
+              letterSpacing: 2, marginBottom: 10, textAlign: "center" }}>SHARE VIA</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               {[
-                { label: "WhatsApp", color: "#25D366", emoji: "💬", url: `https://wa.me/?text=${encodeURIComponent(`I'm Level ${level} on Ascend! Can you beat my ${streak}-day streak? ${challengeLink}`)}` },
-                { label: "Twitter",  color: "#1DA1F2", emoji: "🐦", url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`I'm Level ${level} on Ascend with a ${streak}-day streak! Challenge me 🔥 ${challengeLink}`)}` },
+                { label: "WhatsApp", color: "#25D366", emoji: "💬",
+                  url: `https://wa.me/?text=${encodeURIComponent(`⚔️ I'm Level ${level} on Ascend with a ${streak}-day streak!\n\nCan you beat me? Download the app and let's compete:\nhttps://ascend-app-six.vercel.app`)}` },
+                { label: "Twitter",  color: "#1DA1F2", emoji: "🐦",
+                  url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`I'm Level ${level} on Ascend with a ${streak}-day streak 🔥\n\nChallenging everyone to beat my score! ⚔️\nhttps://ascend-app-six.vercel.app`)}` },
+                { label: "Copy Text", color: "#94A3B8", emoji: "📝",
+                  action: () => {
+                    navigator.clipboard.writeText(`⚔️ I'm Level ${level} on Ascend!\nStreak: ${streak} days | XP: ${xp}\nCan you beat me? https://ascend-app-six.vercel.app`);
+                    setCopied(true); setTimeout(() => setCopied(false), 2000);
+                  }
+                },
               ].map(s => (
-                <a key={s.label} href={s.url} target="_blank" rel="noopener noreferrer"
-                  style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${s.color}44`, background: `${s.color}12`, color: s.color, fontFamily: "'Rajdhani', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                  {s.emoji} {s.label}
-                </a>
+                s.url
+                  ? <a key={s.label} href={s.url} target="_blank" rel="noopener noreferrer"
+                      style={{ flex: 1, padding: "12px 6px", borderRadius: 14,
+                        border: `1px solid ${s.color}33`, background: `${s.color}0c`,
+                        color: s.color, fontFamily: "'Rajdhani', sans-serif", fontSize: 12,
+                        fontWeight: 700, cursor: "pointer", textAlign: "center",
+                        textDecoration: "none", display: "flex", flexDirection: "column",
+                        alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 18 }}>{s.emoji}</span>
+                      <span>{s.label}</span>
+                    </a>
+                  : <button key={s.label} onClick={s.action}
+                      style={{ flex: 1, padding: "12px 6px", borderRadius: 14,
+                        border: `1px solid ${s.color}33`, background: `${s.color}0c`,
+                        color: s.color, fontFamily: "'Rajdhani', sans-serif", fontSize: 12,
+                        fontWeight: 700, cursor: "pointer", display: "flex",
+                        flexDirection: "column", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 18 }}>{s.emoji}</span>
+                      <span>{s.label}</span>
+                    </button>
               ))}
             </div>
+
             <button onClick={() => setShowChallenge(false)}
-              style={{ width: "100%", padding: 14, borderRadius: 14, border: "1px solid #ffffff15", background: "transparent", color: "#ffffff50", fontFamily: "'Rajdhani', sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-              CLOSE
+              style={{ width: "100%", padding: 14, borderRadius: 14,
+                border: "1px solid #ffffff10", background: "transparent",
+                color: "#ffffff30", fontFamily: "'Rajdhani', sans-serif",
+                fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+              Close
             </button>
           </div>
         </div>
