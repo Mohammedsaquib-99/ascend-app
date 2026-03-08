@@ -3,6 +3,31 @@ import completeSound from "./assets/sounds/complete.mp3";
 // Boss defeat sound using Web Audio API (no extra file needed)
 import { useState, useEffect, useRef } from "react";
 
+// ─── THEME SYSTEM ─────────────────────────────────────────────────────────────
+const THEMES = {
+  purple: { a: "#8B5CF6", b: "#06B6D4", name: "Void" },
+  fire:   { a: "#EF4444", b: "#F59E0B", name: "Inferno" },
+  nature: { a: "#10B981", b: "#06B6D4", name: "Forest" },
+  gold:   { a: "#F59E0B", b: "#FBBF24", name: "Gold" },
+  pink:   { a: "#EC4899", b: "#8B5CF6", name: "Sakura" },
+};
+function getTheme(id) { return THEMES[id] || THEMES.purple; }
+
+// ─── WEEKLY BOSS ROSTER ────────────────────────────────────────────────────────
+const BOSS_ROSTER = [
+  { name: "THE PROCRASTINATOR", icon: "🦹", color: "#EF4444", trait: "Drains will — defeats 2 hard habits first!" },
+  { name: "THE DISTRACTOR",     icon: "🌀", color: "#8B5CF6", trait: "Scrambles focus — no screen time allowed!" },
+  { name: "THE SLOTH",          icon: "🦥", color: "#10B981", trait: "Slows momentum — body habits do 2× damage!" },
+  { name: "THE PERFECTIONIST",  icon: "👁️",  color: "#06B6D4", trait: "Blocks progress — all habits must be flawless!" },
+  { name: "THE DOUBTER",        icon: "😈", color: "#F59E0B", trait: "Weakens resolve — mind habits strike hardest!" },
+  { name: "SHADOW SELF",        icon: "🕷️", color: "#EC4899", trait: "Mirrors your weakness — discipline is the key!" },
+  { name: "THE VOID",           icon: "🌑", color: "#6366F1", trait: "Consumes all — every habit counts double!" },
+];
+function getWeeklyBoss() {
+  const week = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+  return BOSS_ROSTER[week % BOSS_ROSTER.length];
+}
+
 const HABITS_DATA = [
   { id: 1, name: "Morning Meditation", category: "Mind", difficulty: "Medium", xp: 50, icon: "🧘", streak: 0, completed: false, time: "06:00 AM" },
   { id: 2, name: "Cold Shower", category: "Body", difficulty: "Hard", xp: 80, icon: "🌊", streak: 0, completed: false, time: "06:30 AM" },
@@ -263,7 +288,7 @@ export default function App() {
   });
   const [userProfile, setUserProfile] = useState(() => {
     const saved = localStorage.getItem("ascend-profile");
-    return saved ? JSON.parse(saved) : { age: "", gender: "", avatar: "⚔️", theme: "purple", soundEnabled: true };
+    return saved ? JSON.parse(saved) : { age: "", gender: "", avatar: "⚔️", theme: "purple", soundEnabled: true, reminderEnabled: false, reminderTime: "08:00" };
   });
 
   useEffect(() => {
@@ -275,9 +300,37 @@ export default function App() {
     localStorage.setItem("ascend-profile", JSON.stringify(userProfile));
   }, [userProfile]);
 
+  // ── NOTIFICATION SCHEDULER ──────────────────────────────────────
+  useEffect(() => {
+    if (!userProfile.reminderEnabled) return;
+    const scheduleNotif = () => {
+      const [hh, mm] = (userProfile.reminderTime || "08:00").split(":").map(Number);
+      const now = new Date();
+      const target = new Date(); target.setHours(hh, mm, 0, 0);
+      if (target <= now) target.setDate(target.getDate() + 1);
+      const ms = target - now;
+      return setTimeout(() => {
+        if (Notification.permission === "granted") {
+          new Notification("⚔️ Ascend — Daily Mission Awaits!", {
+            body: `${username || "Champion"}, your habits are waiting. Don't break the streak! 🔥`,
+            icon: "/vite.svg",
+          });
+        }
+      }, ms);
+    };
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    const t = scheduleNotif();
+    return () => clearTimeout(t);
+  }, [userProfile.reminderEnabled, userProfile.reminderTime, username]);
+
   const level = Math.floor(xp / XP_PER_LEVEL) + 1;
   const levelXp = xp % XP_PER_LEVEL;
   const levelProgress = (levelXp / XP_PER_LEVEL) * 100;
+  const theme = getTheme(userProfile.theme);
+  const TC = theme.a;  // primary theme color
+  const TC2 = theme.b; // secondary theme color
   const completedToday = habits.filter(h => h.completed).length;
   const totalToday = habits.length;
   const hardHabits = habits.filter(h => h.difficulty === "Hard");
@@ -441,12 +494,12 @@ export default function App() {
       dayNumber={dayNumber} onLongPressHabit={openEditHabit}
       userProfile={userProfile} dailyChallenge={dailyChallenge}
       completeDailyChallenge={completeDailyChallenge}
-      levelTitle={getLevelTitle(level)}
+      levelTitle={getLevelTitle(level)} TC={TC} TC2={TC2}
     />,
     skills: <SkillScreen habits={habits} streak={streak} xp={xp} />,
-    analytics: <AnalyticsScreen habits={habits} xp={xp} level={level} levelProgress={levelProgress} streak={streak} />,
+    analytics: <AnalyticsScreen habits={habits} xp={xp} level={level} levelProgress={levelProgress} streak={streak} TC={TC} TC2={TC2} />,
     focus: <FocusScreen focusTime={focusTime} focusRunning={focusRunning} setFocusRunning={setFocusRunning} setFocusTime={setFocusTime} formatTime={formatTime} focusActive={focusActive} setFocusActive={setFocusActive} />,
-    profile: <ProfileScreen xp={xp} level={level} levelProgress={levelProgress} habits={habits} streak={streak} username={username} userProfile={userProfile} onOpenSettings={() => setShowSettings(true)} xpLog={xpLog} />,
+    profile: <ProfileScreen xp={xp} level={level} levelProgress={levelProgress} habits={habits} streak={streak} username={username} userProfile={userProfile} onOpenSettings={() => setShowSettings(true)} xpLog={xpLog} TC={TC} TC2={TC2} />,
   };
 
   if (!hasEnteredName) {
@@ -593,14 +646,14 @@ export default function App() {
         width: "100%", maxWidth: 430, minHeight: "100vh",
         background: "#030712", position: "relative", overflow: "hidden",
         zIndex: 1, flexShrink: 0,
-        boxShadow: "0 0 0 1px #ffffff08, 0 0 80px #8B5CF622, 0 0 120px #06B6D410",
+        boxShadow: `0 0 0 1px ${TC}18, 0 0 80px ${TC}22, 0 0 120px ${TC2}10`,
       }}>
 
       {/* Ambient background */}
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-        <div style={{ position: "absolute", top: -100, left: -100, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #8B5CF620 0%, transparent 70%)", animation: "orb 8s ease-in-out infinite" }} />
-        <div style={{ position: "absolute", bottom: -50, right: -100, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, #06B6D420 0%, transparent 70%)", animation: "orb 6s ease-in-out infinite 3s" }} />
-        <div style={{ position: "absolute", top: "40%", right: -80, width: 250, height: 250, borderRadius: "50%", background: "radial-gradient(circle, #EF444415 0%, transparent 70%)" }} />
+        <div style={{ position: "absolute", top: -100, left: -100, width: 400, height: 400, borderRadius: "50%", background: `radial-gradient(circle, ${TC}18 0%, transparent 70%)`, animation: "orb 8s ease-in-out infinite" }} />
+        <div style={{ position: "absolute", bottom: -50, right: -100, width: 300, height: 300, borderRadius: "50%", background: `radial-gradient(circle, ${TC2}18 0%, transparent 70%)`, animation: "orb 6s ease-in-out infinite 3s" }} />
+        <div style={{ position: "absolute", top: "40%", right: -80, width: 250, height: 250, borderRadius: "50%", background: `radial-gradient(circle, ${TC}10 0%, transparent 70%)` }} />
         <ParticleCanvas />
       </div>
 
@@ -608,7 +661,7 @@ export default function App() {
 
       {showLevelUp && (
         <div style={{ position: "fixed", top: "25%", left: "50%", transform: "translateX(-50%)", zIndex: 9998, textAlign: "center", animation: "levelUp 0.6s ease", width: 280 }}>
-          <div style={{ background: "linear-gradient(135deg, #1a0f2e, #0f1a1a)", border: "1px solid #F59E0B66", borderRadius: 24, padding: "28px 32px", boxShadow: "0 0 80px #F59E0B55, 0 0 30px #8B5CF644" }}>
+          <div style={{ background: "linear-gradient(135deg, #1a0f2e, #0f1a1a)", border: "1px solid #F59E0B66", borderRadius: 24, padding: "28px 32px", boxShadow: `0 0 80px #F59E0B55, 0 0 30px ${TC}44` }}>
             <div style={{ fontSize: 52, marginBottom: 8 }}>🏆</div>
             <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 11, letterSpacing: 4, color: "#F59E0B", marginBottom: 6 }}>ALL MISSIONS COMPLETE</div>
             <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 28, fontWeight: 900, background: "linear-gradient(135deg, #F59E0B, #EF4444)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>LEVEL UP!</div>
@@ -694,7 +747,7 @@ export default function App() {
         </div>
       )}
 
-      <BottomNav screen={screen} setScreen={setScreen} />
+      <BottomNav screen={screen} setScreen={setScreen} TC={TC} />
       </div> {/* end phone frame */}
     </div>
   );
@@ -837,7 +890,7 @@ function OnboardingScreen({ username, onFinish }) {
 }
 
 // ─── HOME SCREEN ──────────────────────────────────────────────────────────────
-function HomeScreen({ habits, xp, level, levelProgress, completedToday, totalToday, completeHabit, completedFlash, activeTab, setActiveTab, setShowBoss, setShowAddHabit, username, streak, bossHp, dayNumber, onLongPressHabit, userProfile, dailyChallenge, completeDailyChallenge, levelTitle }) {
+function HomeScreen({ habits, xp, level, levelProgress, completedToday, totalToday, completeHabit, completedFlash, activeTab, setActiveTab, setShowBoss, setShowAddHabit, username, streak, bossHp, dayNumber, onLongPressHabit, userProfile, dailyChallenge, completeDailyChallenge, levelTitle, TC = "#8B5CF6", TC2 = "#06B6D4" }) {
   const dailyXpEarned = habits.filter(h => h.completed).reduce((s, h) => s + h.xp, 0);
   const quote = getDailyQuote();
 
@@ -845,15 +898,15 @@ function HomeScreen({ habits, xp, level, levelProgress, completedToday, totalTod
     <div style={{ padding: "0 0 20px" }}>
       {/* ── HEADER ── */}
       <div style={{ position: "relative", padding: "52px 20px 20px", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(#8B5CF606 1px, transparent 1px), linear-gradient(90deg, #8B5CF606 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
-        <div style={{ position: "absolute", top: 0, left: 20, right: 20, height: 1, background: "linear-gradient(90deg, transparent, #8B5CF666, transparent)" }} />
+        <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(${TC}08 1px, transparent 1px), linear-gradient(90deg, ${TC}08 1px, transparent 1px)`, backgroundSize: "32px 32px" }} />
+        <div style={{ position: "absolute", top: 0, left: 20, right: 20, height: 1, background: `linear-gradient(90deg, transparent, ${TC}55, transparent)` }} />
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
           <div>
-            <div style={{ fontSize: 10, letterSpacing: 5, color: "#8B5CF6", fontFamily: "'Orbitron', monospace", marginBottom: 6, opacity: 0.8 }}>
+            <div style={{ fontSize: 10, letterSpacing: 5, color: TC, fontFamily: "'Orbitron', monospace", marginBottom: 6, opacity: 0.8 }}>
               ASCEND // DAY {dayNumber}
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, background: "linear-gradient(135deg, #fff 50%, #8B5CF6aa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, background: `linear-gradient(135deg, #fff 50%, ${TC}aa)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
               Good Morning,<br />{username || "Champion"}.
             </div>
             {levelTitle && (
@@ -875,7 +928,7 @@ function HomeScreen({ habits, xp, level, levelProgress, completedToday, totalTod
           </div>
 
           <div style={{ position: "relative", flexShrink: 0 }}>
-            <div style={{ width: 58, height: 58, borderRadius: "50%", background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, border: "2px solid #8B5CF644", animation: "glow 3s ease-in-out infinite", overflow: "hidden" }}>
+            <div style={{ width: 58, height: 58, borderRadius: "50%", background: `linear-gradient(135deg, ${TC}, ${TC2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, border: `2px solid ${TC}44`, animation: "glow 3s ease-in-out infinite", overflow: "hidden" }}>
               {userProfile?.avatarImg
                 ? <img src={userProfile.avatarImg} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 : (userProfile?.avatar || "⚔️")}
@@ -891,7 +944,7 @@ function HomeScreen({ habits, xp, level, levelProgress, completedToday, totalTod
             <span style={{ fontSize: 10, color: "#F59E0B", fontFamily: "'Orbitron', monospace", fontWeight: 700 }}>{xp} XP</span>
           </div>
           <div style={{ height: 5, background: "#ffffff08", borderRadius: 3, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${levelProgress}%`, background: "linear-gradient(90deg, #8B5CF6, #06B6D4, #8B5CF6)", backgroundSize: "200% 100%", animation: "shimmer 3s linear infinite", borderRadius: 3, transition: "width 1s cubic-bezier(0.34,1.56,0.64,1)" }} />
+            <div style={{ height: "100%", width: `${levelProgress}%`, background: `linear-gradient(90deg, ${TC}, ${TC2}, ${TC})`, backgroundSize: "200% 100%", animation: "shimmer 3s linear infinite", borderRadius: 3, transition: "width 1s cubic-bezier(0.34,1.56,0.64,1)" }} />
           </div>
         </div>
 
@@ -900,7 +953,7 @@ function HomeScreen({ habits, xp, level, levelProgress, completedToday, totalTod
           {[
             { label: "TODAY'S XP", value: `+${dailyXpEarned}`, color: "#F59E0B", bg: "#F59E0B" },
             { label: "STREAK",     value: `${streak}🔥`,         color: "#EF4444", bg: "#EF4444" },
-            { label: "MISSIONS",  value: `${completedToday}/${totalToday}`, color: "#06B6D4", bg: "#06B6D4" },
+            { label: "MISSIONS",  value: `${completedToday}/${totalToday}`, color: TC2, bg: TC2 },
           ].map(s => (
             <div key={s.label} style={{ background: `${s.bg}0c`, border: `1px solid ${s.bg}25`, borderRadius: 14, padding: "12px 8px", textAlign: "center", position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${s.bg}88, transparent)` }} />
@@ -913,21 +966,21 @@ function HomeScreen({ habits, xp, level, levelProgress, completedToday, totalTod
 
       {/* ── DAILY QUOTE ── */}
       <div style={{ padding: "0 20px", marginBottom: 14 }}>
-        <div style={{ background: "linear-gradient(135deg, #1a0f2e, #0f1a2e)", border: "1px solid #8B5CF630", borderRadius: 20, padding: "18px 20px", position: "relative", overflow: "hidden" }}>
+        <div style={{ background: "linear-gradient(135deg, #1a0f2e, #0f1a2e)", border: `1px solid ${TC}30`, borderRadius: 20, padding: "18px 20px", position: "relative", overflow: "hidden" }}>
           {/* Glow orbs */}
-          <div style={{ position: "absolute", top: -30, right: -30, width: 100, height: 100, borderRadius: "50%", background: "radial-gradient(circle, #8B5CF622 0%, transparent 70%)" }} />
-          <div style={{ position: "absolute", bottom: -20, left: -20, width: 80, height: 80, borderRadius: "50%", background: "radial-gradient(circle, #06B6D415 0%, transparent 70%)" }} />
+          <div style={{ position: "absolute", top: -30, right: -30, width: 100, height: 100, borderRadius: "50%", background: `radial-gradient(circle, ${TC}22 0%, transparent 70%)` }} />
+          <div style={{ position: "absolute", bottom: -20, left: -20, width: 80, height: 80, borderRadius: "50%", background: `radial-gradient(circle, ${TC2}15 0%, transparent 70%)` }} />
           {/* Header */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>✦</div>
-            <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 9, fontWeight: 700, letterSpacing: 3, color: "#8B5CF6" }}>DAILY WISDOM</div>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${TC}, ${TC2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>✦</div>
+            <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 9, fontWeight: 700, letterSpacing: 3, color: TC }}>DAILY WISDOM</div>
             <div style={{ marginLeft: "auto", fontSize: 9, color: "#ffffff20", fontFamily: "'Orbitron', monospace" }}>{new Date().toLocaleDateString([], { month: "short", day: "numeric" }).toUpperCase()}</div>
           </div>
           {/* Quote */}
           <div style={{ fontSize: 15, color: "#ffffffee", lineHeight: 1.65, fontStyle: "italic", fontFamily: "'Rajdhani', sans-serif", fontWeight: 500, marginBottom: 12, position: "relative" }}>
-            <span style={{ fontSize: 28, color: "#8B5CF644", fontFamily: "Georgia, serif", lineHeight: 0, verticalAlign: -8, marginRight: 4 }}>"</span>
+            <span style={{ fontSize: 28, color: `${TC}44`, fontFamily: "Georgia, serif", lineHeight: 0, verticalAlign: -8, marginRight: 4 }}>"</span>
             {quote.text}
-            <span style={{ fontSize: 28, color: "#8B5CF644", fontFamily: "Georgia, serif", lineHeight: 0, verticalAlign: -8, marginLeft: 2 }}>"</span>
+            <span style={{ fontSize: 28, color: `${TC}44`, fontFamily: "Georgia, serif", lineHeight: 0, verticalAlign: -8, marginLeft: 2 }}>"</span>
           </div>
           {/* Author + divider */}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1356,9 +1409,17 @@ function HabitCard({ habit, onComplete, flash, onLongPress }) {
       </div>
 
       {habit.streak > 0 && (
-        <div style={{ marginTop: 12, paddingLeft: 8 }}>
+        <div style={{ marginTop: 10, paddingLeft: 8 }}>
           <div style={{ height: 2, background: "#ffffff08", borderRadius: 1, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${Math.min(100, (habit.streak / 30) * 100)}%`, background: `linear-gradient(90deg, ${accent}, ${accent}55)`, borderRadius: 1, transition: "width 0.6s ease" }} />
+          </div>
+        </div>
+      )}
+      {habit.lastNote && habit.completed && (
+        <div style={{ marginTop: 8, paddingLeft: 8, display: "flex", alignItems: "flex-start", gap: 6 }}>
+          <span style={{ fontSize: 10, flexShrink: 0, opacity: 0.5 }}>📝</span>
+          <div style={{ fontSize: 11, color: "#ffffff45", fontFamily: "'Rajdhani', sans-serif", fontWeight: 500, fontStyle: "italic", lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+            {habit.lastNote}
           </div>
         </div>
       )}
@@ -1633,7 +1694,7 @@ function SkillScreen({ habits, streak, xp }) {
 }
 
 // ─── ANALYTICS SCREEN ─────────────────────────────────────────────────────────
-function AnalyticsScreen({ habits, xp, level, levelProgress, streak }) {
+function AnalyticsScreen({ habits, xp, level, levelProgress, streak, TC = "#8B5CF6", TC2 = "#06B6D4" }) {
   const days = ["M", "T", "W", "T", "F", "S", "S"];
   const today = new Date().getDay(); // 0=Sun, 1=Mon...
   const todayIndex = today === 0 ? 6 : today - 1; // convert to M=0 index
@@ -1674,7 +1735,7 @@ function AnalyticsScreen({ habits, xp, level, levelProgress, streak }) {
       {/* ── TOP STAT CARDS (real data) ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
         {[
-          { label: "DISCIPLINE SCORE", value: disciplineScore, unit: "/100", color: "#8B5CF6", icon: "🔥", bg: "#8B5CF6" },
+          { label: "DISCIPLINE SCORE", value: disciplineScore, unit: "/100", color: TC,  icon: "🔥", bg: TC },
           { label: "CURRENT STREAK",   value: streak,          unit: " days", color: "#F59E0B", icon: "⚡", bg: "#F59E0B" },
           { label: "TOTAL XP",         value: xp.toLocaleString(), unit: "", color: "#06B6D4", icon: "💎", bg: "#06B6D4" },
           { label: "HABITS DONE",      value: totalEver,       unit: " total", color: "#10B981", icon: "✓", bg: "#10B981" },
@@ -1701,7 +1762,7 @@ function AnalyticsScreen({ habits, xp, level, levelProgress, streak }) {
               </filter>
             </defs>
             <circle cx="45" cy="45" r="38" fill="none" stroke="#ffffff08" strokeWidth="7" />
-            <circle cx="45" cy="45" r="38" fill="none" stroke="#06B6D4" strokeWidth="7"
+            <circle cx="45" cy="45" r="38" fill="none" stroke={TC2} strokeWidth="7"
               strokeDasharray={2 * Math.PI * 38}
               strokeDashoffset={2 * Math.PI * 38 * (1 - completionRate / 100)}
               strokeLinecap="round" style={{ transition: "stroke-dashoffset 1s ease", filter: "drop-shadow(0 0 8px #06B6D4) drop-shadow(0 0 16px #06B6D488)" }} />
@@ -1719,7 +1780,7 @@ function AnalyticsScreen({ habits, xp, level, levelProgress, streak }) {
             })()}
           </svg>
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 16, fontWeight: 900, color: "#06B6D4" }}>{completionRate}%</div>
+            <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 16, fontWeight: 900, color: TC2 }}>{completionRate}%</div>
           </div>
         </div>
         <div style={{ flex: 1 }}>
@@ -2014,7 +2075,90 @@ function FocusScreen({ focusTime, focusRunning, setFocusRunning, setFocusTime, f
 }
 
 // ─── PROFILE SCREEN ───────────────────────────────────────────────────────────
-function ProfileScreen({ xp, level, levelProgress, habits, streak, username, userProfile, onOpenSettings, xpLog }) {
+function ProfileScreen({ xp, level, levelProgress, habits, streak, username, userProfile, onOpenSettings, xpLog, TC = "#8B5CF6", TC2 = "#06B6D4" }) {
+  const [showShare, setShowShare] = useState(false);
+  const [showChallenge, setShowChallenge] = useState(false);
+  const [challengeLink, setChallengeLink] = useState("");
+  const shareCardRef = useRef(null);
+
+  const generateChallengeLink = () => {
+    const data = btoa(JSON.stringify({ name: username, level, streak, xp, habits: habits.length }));
+    const link = `${window.location.origin}?challenge=${data}`;
+    setChallengeLink(link);
+    setShowChallenge(true);
+  };
+
+  const shareCard = () => {
+    // Use html2canvas-like approach via canvas
+    const canvas = document.createElement("canvas");
+    canvas.width = 600; canvas.height = 340;
+    const ctx = canvas.getContext("2d");
+    const t = getTheme(userProfile?.theme || "purple");
+
+    // Background
+    const grad = ctx.createLinearGradient(0, 0, 600, 340);
+    grad.addColorStop(0, "#030712"); grad.addColorStop(1, "#0f0720");
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, 600, 340);
+
+    // Glow circle
+    const glow = ctx.createRadialGradient(80, 170, 0, 80, 170, 160);
+    glow.addColorStop(0, t.a + "33"); glow.addColorStop(1, "transparent");
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, 600, 340);
+
+    // Border
+    ctx.strokeStyle = t.a + "44"; ctx.lineWidth = 1.5;
+    ctx.strokeRect(1, 1, 598, 338);
+
+    // ASCEND logo text
+    ctx.fillStyle = t.a; ctx.font = "bold 13px monospace";
+    ctx.letterSpacing = "6px"; ctx.fillText("⚔  ASCEND", 36, 50);
+
+    // Level badge
+    ctx.fillStyle = t.a + "22"; ctx.beginPath();
+    ctx.roundRect(36, 70, 160, 80, 14); ctx.fill();
+    ctx.strokeStyle = t.a + "55"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(36, 70, 160, 80, 14); ctx.stroke();
+
+    ctx.fillStyle = t.a; ctx.font = "bold 42px monospace";
+    ctx.fillText(`LV${level}`, 46, 128);
+    ctx.fillStyle = "#ffffff55"; ctx.font = "11px monospace";
+    ctx.fillText("LEVEL", 46, 148);
+
+    // XP
+    ctx.fillStyle = "#F59E0B"; ctx.font = "bold 28px monospace";
+    ctx.fillText(`${xp.toLocaleString()} XP`, 220, 120);
+    ctx.fillStyle = "#ffffff40"; ctx.font = "11px monospace";
+    ctx.fillText("TOTAL XP", 220, 140);
+
+    // Streak
+    ctx.fillStyle = "#EF4444"; ctx.font = "bold 28px monospace";
+    ctx.fillText(`🔥 ${streak}`, 220, 180);
+    ctx.fillStyle = "#ffffff40"; ctx.font = "11px monospace";
+    ctx.fillText("DAY STREAK", 220, 198);
+
+    // Username
+    ctx.fillStyle = "#fff"; ctx.font = "bold 32px sans-serif";
+    ctx.fillText(username || "Champion", 36, 230);
+    ctx.fillStyle = "#ffffff40"; ctx.font = "13px monospace";
+    ctx.fillText("is leveling up their life on Ascend", 36, 255);
+
+    // Bottom bar
+    const bar = ctx.createLinearGradient(0, 290, 600, 290);
+    bar.addColorStop(0, t.a); bar.addColorStop(1, t.b);
+    ctx.fillStyle = bar; ctx.fillRect(0, 300, 600 * (levelProgress / 100), 6);
+    ctx.fillStyle = "#ffffff10"; ctx.fillRect(0, 300, 600, 6);
+    ctx.fillStyle = bar; ctx.fillRect(0, 300, 600 * (levelProgress / 100), 6);
+
+    ctx.fillStyle = "#ffffff25"; ctx.font = "10px monospace";
+    ctx.fillText(`${Math.floor(levelProgress)}% TO NEXT LEVEL  ·  ascend-app.vercel.app`, 36, 326);
+
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url;
+      a.download = `ascend-level-${level}.png`; a.click();
+      URL.revokeObjectURL(url);
+    });
+  };
   const xpToNext = 500 - (xp % 500);
   const completedToday = habits.filter(h => h.completed).length;
   const totalHabits = habits.length;
@@ -2157,12 +2301,12 @@ function ProfileScreen({ xp, level, levelProgress, habits, streak, username, use
         const totalNotes = (xpLog || []).filter(e => e.note).length;
         return (
           <div style={{ margin: "0 16px 16px" }}>
-            <div style={{ background: "linear-gradient(135deg, #1a0f2e, #0f1a2e)", border: "1px solid #8B5CF630", borderRadius: 20, padding: 18, position: "relative", overflow: "hidden" }}>
+            <div style={{ background: "linear-gradient(135deg, #1a0f2e, #0f1a2e)", border: `1px solid ${TC}30`, borderRadius: 20, padding: 18, position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: -30, right: -30, width: 100, height: 100, borderRadius: "50%", background: "radial-gradient(circle, #F59E0B18 0%, transparent 70%)" }} />
               <div style={{ fontSize: 10, letterSpacing: 3, color: "#F59E0B", fontFamily: "'Orbitron', monospace", marginBottom: 14 }}>📅 THIS WEEK</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
                 {[
-                  { label: "DAY", value: `${dayOfWeek + 1}/7`, color: "#8B5CF6" },
+                  { label: "DAY", value: `${dayOfWeek + 1}/7`, color: TC },
                   { label: "TODAY", value: `${rate}%`, color: rate >= 80 ? "#10B981" : rate >= 50 ? "#F59E0B" : "#EF4444" },
                   { label: "WEEK XP", value: weekXp, color: "#F59E0B" },
                   { label: "NOTES", value: totalNotes, color: "#06B6D4" },
@@ -2192,6 +2336,69 @@ function ProfileScreen({ xp, level, levelProgress, habits, streak, username, use
         );
       })()}
 
+      {/* ── SHARE & CHALLENGE BUTTONS ── */}
+      <div style={{ margin: "0 16px 16px", display: "flex", gap: 10 }}>
+        <button onClick={shareCard}
+          style={{ flex: 1, padding: "13px 8px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${TC}, ${TC2})`, color: "#fff", fontFamily: "'Orbitron', monospace", fontSize: 10, fontWeight: 700, letterSpacing: 2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: `0 0 20px ${TC}44` }}>
+          📤 SHARE CARD
+        </button>
+        <button onClick={generateChallengeLink}
+          style={{ flex: 1, padding: "13px 8px", borderRadius: 14, border: `1px solid ${TC}44`, background: `${TC}12`, color: TC, fontFamily: "'Orbitron', monospace", fontSize: 10, fontWeight: 700, letterSpacing: 2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          🤝 CHALLENGE
+        </button>
+      </div>
+
+      {/* ── FRIEND CHALLENGE MODAL ── */}
+      {showChallenge && (
+        <div style={{ position: "fixed", inset: 0, background: "#000000bb", backdropFilter: "blur(8px)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div style={{ width: "100%", maxWidth: 430, background: "linear-gradient(135deg, #0f0f1a, #1a1a2e)", border: `1px solid ${TC}44`, borderRadius: "24px 24px 0 0", padding: "24px 20px 40px", animation: "modalIn 0.3s ease" }}>
+            <div style={{ width: 40, height: 4, background: "#ffffff20", borderRadius: 2, margin: "0 auto 20px" }} />
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>🤝</div>
+              <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 14, fontWeight: 700, letterSpacing: 3, color: TC }}>CHALLENGE A FRIEND</div>
+              <div style={{ fontSize: 13, color: "#ffffff50", marginTop: 6, fontFamily: "'Rajdhani', sans-serif" }}>Share this link and race to build better habits!</div>
+            </div>
+            {/* Stats being challenged */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {[
+                { label: "LEVEL", value: level, color: TC },
+                { label: "STREAK", value: `${streak}🔥`, color: "#EF4444" },
+                { label: "HABITS", value: habits.length, color: TC2 },
+              ].map(s => (
+                <div key={s.label} style={{ flex: 1, textAlign: "center", background: `${s.color}0c`, border: `1px solid ${s.color}22`, borderRadius: 12, padding: "10px 4px" }}>
+                  <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 18, fontWeight: 900, color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 8, color: "#ffffff30", letterSpacing: 2, marginTop: 3 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+            {/* Link box */}
+            <div style={{ background: "#ffffff08", border: "1px solid #ffffff15", borderRadius: 12, padding: "12px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ flex: 1, fontSize: 11, color: "#ffffff60", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{challengeLink}</div>
+              <button onClick={() => { navigator.clipboard.writeText(challengeLink); }}
+                style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: TC, color: "#fff", fontFamily: "'Orbitron', monospace", fontSize: 9, fontWeight: 700, letterSpacing: 1, cursor: "pointer", flexShrink: 0 }}>
+                COPY
+              </button>
+            </div>
+            {/* Share via */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              {[
+                { label: "WhatsApp", color: "#25D366", emoji: "💬", url: `https://wa.me/?text=${encodeURIComponent(`I'm Level ${level} on Ascend! Can you beat my ${streak}-day streak? ${challengeLink}`)}` },
+                { label: "Twitter",  color: "#1DA1F2", emoji: "🐦", url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`I'm Level ${level} on Ascend with a ${streak}-day streak! Challenge me 🔥 ${challengeLink}`)}` },
+              ].map(s => (
+                <a key={s.label} href={s.url} target="_blank" rel="noopener noreferrer"
+                  style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${s.color}44`, background: `${s.color}12`, color: s.color, fontFamily: "'Rajdhani', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  {s.emoji} {s.label}
+                </a>
+              ))}
+            </div>
+            <button onClick={() => setShowChallenge(false)}
+              style={{ width: "100%", padding: 14, borderRadius: 14, border: "1px solid #ffffff15", background: "transparent", color: "#ffffff50", fontFamily: "'Rajdhani', sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              CLOSE
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── XP HISTORY LOG ── */}
       <div style={{ margin: "0 16px 24px" }}>
         <div style={{ background: "#ffffff05", border: "1px solid #ffffff0a", borderRadius: 20, padding: 18 }}>
@@ -2204,7 +2411,7 @@ function ProfileScreen({ xp, level, levelProgress, habits, streak, username, use
           ) : (
             xpLog.slice(0, 15).map((entry, i) => (
               <div key={entry.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, paddingBottom: i < xpLog.length - 1 ? 12 : 0, marginBottom: i < xpLog.length - 1 ? 12 : 0, borderBottom: i < Math.min(xpLog.length, 15) - 1 ? "1px solid #ffffff08" : "none", animation: `slideUp 0.3s ease ${i * 0.04}s both` }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: "#8B5CF615", border: "1px solid #8B5CF630", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{entry.habitIcon}</div>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: `${TC}15`, border: `1px solid ${TC}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{entry.habitIcon}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.habitName}</div>
                   {entry.note && <div style={{ fontSize: 11, color: "#ffffff40", marginTop: 2, lineHeight: 1.4, fontStyle: "italic" }}>"{entry.note}"</div>}
@@ -2365,8 +2572,20 @@ function SettingsModal({ username, setUsername, userProfile, setUserProfile, onC
         {/* ── PREFERENCES ── */}
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 10, letterSpacing: 3, color: "#ffffff40", fontFamily: "'Orbitron', monospace", marginBottom: 4 }}>PREFERENCES</div>
-          <Toggle optKey="soundEnabled"   label="Sound Effects"  icon="🔊" />
-          <Toggle optKey="dailyReminder"  label="Daily Reminder" icon="🔔" />
+          <Toggle optKey="soundEnabled"    label="Sound Effects"  icon="🔊" />
+          <Toggle optKey="reminderEnabled" label="Daily Reminder" icon="🔔" />
+          {localProfile.reminderEnabled && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", marginBottom: 4, background: "#ffffff06", borderRadius: 12, border: "1px solid #06B6D422" }}>
+              <span style={{ fontSize: 16 }}>⏰</span>
+              <span style={{ flex: 1, fontSize: 13, color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontWeight: 600 }}>Reminder Time</span>
+              <input
+                type="time"
+                value={localProfile.reminderTime || "08:00"}
+                onChange={e => setLocalProfile(p => ({ ...p, reminderTime: e.target.value }))}
+                style={{ background: "#ffffff10", border: "1px solid #06B6D444", borderRadius: 8, padding: "5px 10px", color: "#06B6D4", fontFamily: "'Orbitron', monospace", fontSize: 12, fontWeight: 700, outline: "none", cursor: "pointer" }}
+              />
+            </div>
+          )}
           <Toggle optKey="showStreakAlert" label="Streak Alerts"  icon="🔥" />
         </div>
 
@@ -2399,15 +2618,15 @@ function SettingsModal({ username, setUsername, userProfile, setUserProfile, onC
 
 // ─── BOSS MODAL ───────────────────────────────────────────────────────────────
 function BossModal({ bossHp, onClose, habits, playBossDefeatSound }) {
+  const boss = getWeeklyBoss();
   const hardCompleted = habits.filter(h => h.difficulty === "Hard" && h.completed).length;
   const hardTotal = habits.filter(h => h.difficulty === "Hard").length;
   const defeated = bossHp === 0;
 
-  // Fire confetti + sound when boss is defeated
   useEffect(() => {
     if (defeated) {
       if (playBossDefeatSound) playBossDefeatSound();
-      confetti({ particleCount: 200, spread: 120, origin: { y: 0.5 }, colors: ["#F59E0B", "#EF4444", "#8B5CF6", "#10B981"] });
+      confetti({ particleCount: 200, spread: 120, origin: { y: 0.5 }, colors: ["#F59E0B", boss.color, "#10B981"] });
       setTimeout(() => confetti({ particleCount: 100, spread: 80, origin: { y: 0.4 } }), 600);
     }
   }, [defeated]);
@@ -2418,22 +2637,18 @@ function BossModal({ bossHp, onClose, habits, playBossDefeatSound }) {
         <div style={{ width: "100%", maxWidth: 390, background: "linear-gradient(135deg, #0f1a0f, #1a1a0f)", border: "1px solid #F59E0B66", borderRadius: 24, padding: 28, animation: "slideUp 0.4s ease", textAlign: "center" }}>
           <div style={{ fontSize: 72, marginBottom: 8 }}>💀</div>
           <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 22, fontWeight: 900, background: "linear-gradient(135deg, #F59E0B, #10B981)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 6 }}>BOSS SLAIN!</div>
-          <div style={{ fontSize: 13, color: "#ffffff60", marginBottom: 24 }}>The Procrastinator has been defeated!</div>
-
-          {/* Reward card */}
+          <div style={{ fontSize: 13, color: "#ffffff60", marginBottom: 24 }}>{boss.name} has been defeated!</div>
           <div style={{ background: "linear-gradient(135deg, #F59E0B22, #10B98122)", border: "1px solid #F59E0B55", borderRadius: 16, padding: 20, marginBottom: 20 }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>🏆</div>
             <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 13, color: "#F59E0B", fontWeight: 700, marginBottom: 6, letterSpacing: 2 }}>VICTORY REWARDS</div>
             <div style={{ fontSize: 28, fontWeight: 900, fontFamily: "'Orbitron', monospace", color: "#10B981", marginBottom: 4 }}>+500 XP</div>
             <div style={{ fontSize: 12, color: "#ffffff50" }}>Legendary Badge · Weekly Champion</div>
           </div>
-
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             {["👑", "⚔️", "🔥"].map((icon, i) => (
-              <div key={i} style={{ flex: 1, background: "linear-gradient(135deg, #F59E0B, #EF4444)", borderRadius: 12, padding: "12px 0", fontSize: 24, boxShadow: "0 0 20px #F59E0B44" }}>{icon}</div>
+              <div key={i} style={{ flex: 1, background: `linear-gradient(135deg, #F59E0B, ${boss.color})`, borderRadius: 12, padding: "12px 0", fontSize: 24, boxShadow: "0 0 20px #F59E0B44" }}>{icon}</div>
             ))}
           </div>
-
           <button onClick={onClose} style={{ width: "100%", padding: 16, borderRadius: 14, border: "none", background: "linear-gradient(135deg, #10B981, #06B6D4)", color: "#fff", fontFamily: "'Orbitron', monospace", fontSize: 13, fontWeight: 700, letterSpacing: 2, cursor: "pointer", boxShadow: "0 0 30px #10B98144" }}>
             CLAIM VICTORY
           </button>
@@ -2444,37 +2659,46 @@ function BossModal({ bossHp, onClose, habits, playBossDefeatSound }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000cc", backdropFilter: "blur(8px)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ width: "100%", maxWidth: 390, background: "linear-gradient(135deg, #0f0f1a, #1a0f1a)", border: "1px solid #EF444444", borderRadius: 24, padding: 24, animation: "slideUp 0.4s ease" }}>
+      <div style={{ width: "100%", maxWidth: 390, background: "linear-gradient(135deg, #0f0f1a, #1a0f1a)", border: `1px solid ${boss.color}44`, borderRadius: 24, padding: 24, animation: "slideUp 0.4s ease" }}>
+        {/* Boss header */}
         <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <div style={{ fontSize: 64, animation: bossHp > 50 ? "bossShake 2s ease-in-out infinite" : "pulse 1s ease-in-out infinite" }}>🦹</div>
-          <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 20, fontWeight: 900, color: "#EF4444", marginTop: 8 }}>THE PROCRASTINATOR</div>
-          <div style={{ fontSize: 12, color: "#ffffff60", marginTop: 4 }}>Weekly Boss Battle</div>
+          <div style={{ fontSize: 64, animation: bossHp > 50 ? "bossShake 2s ease-in-out infinite" : "pulse 1s ease-in-out infinite" }}>{boss.icon}</div>
+          <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 18, fontWeight: 900, color: boss.color, marginTop: 8, letterSpacing: 1 }}>{boss.name}</div>
+          <div style={{ fontSize: 10, color: "#ffffff40", marginTop: 4, fontFamily: "'Orbitron', monospace", letterSpacing: 2 }}>WEEK {Math.floor(Date.now() / (7*24*60*60*1000)) % 52 + 1} BOSS</div>
         </div>
+        {/* Trait card */}
+        <div style={{ background: `${boss.color}12`, border: `1px solid ${boss.color}33`, borderRadius: 12, padding: "10px 14px", marginBottom: 16, display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 16 }}>⚡</span>
+          <span style={{ fontSize: 11, color: `${boss.color}dd`, fontFamily: "'Rajdhani', sans-serif", fontWeight: 600, fontStyle: "italic" }}>{boss.trait}</span>
+        </div>
+        {/* HP bar */}
         <div style={{ marginBottom: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, letterSpacing: 2, color: "#EF4444", fontFamily: "'Orbitron', monospace", marginBottom: 8 }}>
-            <span>BOSS HP</span><span style={{ color: bossHp < 30 ? "#F59E0B" : "#EF4444" }}>{bossHp}%</span>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, letterSpacing: 2, color: boss.color, fontFamily: "'Orbitron', monospace", marginBottom: 8 }}>
+            <span>BOSS HP</span><span style={{ color: bossHp < 30 ? "#F59E0B" : boss.color }}>{bossHp}%</span>
           </div>
           <div style={{ height: 12, background: "#ffffff10", borderRadius: 6, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${bossHp}%`, background: bossHp < 30 ? "linear-gradient(90deg, #F59E0B, #EF4444)" : "linear-gradient(90deg, #EF4444, #F59E0B)", transition: "width 1s ease", borderRadius: 6, boxShadow: `0 0 15px ${bossHp < 30 ? "#F59E0B88" : "#EF444488"}` }} />
+            <div style={{ height: "100%", width: `${bossHp}%`, background: bossHp < 30 ? "linear-gradient(90deg, #F59E0B, #EF4444)" : `linear-gradient(90deg, ${boss.color}, ${boss.color}88)`, transition: "width 1s ease", borderRadius: 6, boxShadow: `0 0 15px ${bossHp < 30 ? "#F59E0B88" : boss.color + "88"}` }} />
           </div>
           {bossHp < 30 && <div style={{ fontSize: 10, color: "#F59E0B", fontFamily: "'Orbitron', monospace", marginTop: 6, letterSpacing: 2, animation: "pulse 1s ease-in-out infinite" }}>⚠ BOSS IS WEAKENING...</div>}
         </div>
+        {/* Hard habits progress */}
         <div style={{ background: "#ffffff08", borderRadius: 16, padding: 16, marginBottom: 20 }}>
           <div style={{ fontSize: 12, color: "#ffffff60", marginBottom: 8 }}>HARD HABITS DEFEATED</div>
-          <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 28, fontWeight: 900, color: hardCompleted === hardTotal ? "#10B981" : "#fff" }}>{hardCompleted}<span style={{ fontSize: 16, color: "#ffffff40" }}>/{hardTotal}</span></div>
+          <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 28, fontWeight: 900, color: hardCompleted === hardTotal && hardTotal > 0 ? "#10B981" : "#fff" }}>{hardCompleted}<span style={{ fontSize: 16, color: "#ffffff40" }}>/{hardTotal}</span></div>
           <div style={{ marginTop: 8, height: 4, background: "#ffffff10", borderRadius: 2 }}>
             <div style={{ height: "100%", width: `${hardTotal > 0 ? (hardCompleted / hardTotal) * 100 : 0}%`, background: "linear-gradient(90deg, #10B981, #06B6D4)", borderRadius: 2, transition: "width 0.6s ease" }} />
           </div>
           <div style={{ fontSize: 12, color: "#ffffff40", marginTop: 6 }}>Complete all Hard habits to slay the boss!</div>
         </div>
+        {/* Reward */}
         <div style={{ display: "flex", gap: 8, padding: 12, background: "#F59E0B15", border: "1px solid #F59E0B44", borderRadius: 12, marginBottom: 20 }}>
           <span style={{ fontSize: 20 }}>🏆</span>
           <div>
             <div style={{ fontSize: 12, color: "#F59E0B", fontWeight: 700 }}>BOSS KILL REWARD</div>
-            <div style={{ fontSize: 11, color: "#ffffff60" }}>+500 XP · Legendary Badge · New Avatar</div>
+            <div style={{ fontSize: 11, color: "#ffffff60" }}>+500 XP · Legendary Badge · Weekly Champion</div>
           </div>
         </div>
-        <button onClick={onClose} style={{ width: "100%", padding: 16, borderRadius: 14, border: "none", background: "linear-gradient(135deg, #EF4444, #8B5CF6)", color: "#fff", fontFamily: "'Orbitron', monospace", fontSize: 13, fontWeight: 700, letterSpacing: 2, cursor: "pointer" }}>
+        <button onClick={onClose} style={{ width: "100%", padding: 16, borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${boss.color}, #8B5CF6)`, color: "#fff", fontFamily: "'Orbitron', monospace", fontSize: 13, fontWeight: 700, letterSpacing: 2, cursor: "pointer" }}>
           BACK TO BATTLE
         </button>
       </div>
@@ -2547,7 +2771,7 @@ function AddHabitModal({ newHabit, setNewHabit, onClose, onSave }) {
 }
 
 // ─── BOTTOM NAV ───────────────────────────────────────────────────────────────
-function BottomNav({ screen, setScreen }) {
+function BottomNav({ screen, setScreen, TC = "#8B5CF6" }) {
   const tabs = [
     { id: "home", icon: "⚔️", label: "BASE" },
     { id: "skills", icon: "🌳", label: "SKILLS" },
@@ -2557,12 +2781,12 @@ function BottomNav({ screen, setScreen }) {
   ];
 
   return (
-    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#0a0a14cc", backdropFilter: "blur(20px)", borderTop: "1px solid #ffffff10", padding: "12px 20px 20px", zIndex: 100 }}>
+    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#0a0a14ee", backdropFilter: "blur(20px)", borderTop: `1px solid ${TC}22`, padding: "12px 20px 20px", zIndex: 100 }}>
       <div style={{ display: "flex", justifyContent: "space-around" }}>
         {tabs.map(tab => (
-          <button key={tab.id} className="nav-btn" onClick={() => setScreen(tab.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: "none", cursor: "pointer", padding: "6px 12px", borderRadius: 12, transition: "all 0.3s", background: screen === tab.id ? "#8B5CF620" : "transparent" }}>
-            <span style={{ fontSize: 20, filter: screen === tab.id ? "drop-shadow(0 0 8px #8B5CF6)" : "grayscale(0.5) opacity(0.5)" }}>{tab.icon}</span>
-            <span style={{ fontSize: 8, letterSpacing: 2, color: screen === tab.id ? "#8B5CF6" : "#ffffff30", fontFamily: "'Orbitron', monospace", fontWeight: 700 }}>{tab.label}</span>
+          <button key={tab.id} className="nav-btn" onClick={() => setScreen(tab.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: "none", cursor: "pointer", padding: "6px 12px", borderRadius: 12, transition: "all 0.3s", background: screen === tab.id ? `${TC}22` : "transparent" }}>
+            <span style={{ fontSize: 20, filter: screen === tab.id ? `drop-shadow(0 0 8px ${TC})` : "grayscale(0.5) opacity(0.5)" }}>{tab.icon}</span>
+            <span style={{ fontSize: 8, letterSpacing: 2, color: screen === tab.id ? TC : "#ffffff30", fontFamily: "'Orbitron', monospace", fontWeight: 700 }}>{tab.label}</span>
           </button>
         ))}
       </div>
